@@ -1,0 +1,49 @@
+[project]
+name = "employee-right-agent"
+version = "0.1.0"
+description = "An observable, evaluable RAG agent: hierarchical embeddings, LangGraph, Phoenix tracing and a CI-gating eval suite."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "chromadb==1.5.9",
+    "langgraph==1.2.11",
+]
+
+[project.optional-dependencies]
+trace = [
+    "arize-phoenix-otel",
+    "arize-phoenix-client",
+    "openinference-instrumentation-langchain",
+    "openinference-semantic-conventions",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+]
+models = ["openai", "anthropic", "tiktoken"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-timeout>=2.3"]
+
+[project.scripts]
+rights-ingest        = "rights_agent.pipelines.hierarchical:main"
+rights-ingest-simple = "rights_agent.pipelines.simple:main"
+rights-compare       = "rights_agent.pipelines.compare:main"
+rights-ask           = "rights_agent.cli:ask"
+rights-demo          = "rights_agent.demo.app:main"
+rights-corpus        = "rights_agent.tools.corpus:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rights_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "evals"]
+addopts = "-ra --strict-markers"
+timeout = 600
+markers = [
+    "slow: exercises the full graph over the golden set",
+]
+filterwarnings = ["error::DeprecationWarning:rights_agent.*"]

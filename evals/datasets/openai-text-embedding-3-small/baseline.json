@@ -1,0 +1,57 @@
+{
+  "generated_for": {
+    "corpus": "ukpga_20250036_en.pdf",
+    "corpus_sha8": "bc461767",
+    "index_version": "parser-6+openai-text-embedding-3-small+bc461767"
+  },
+  "known_failures": [
+    "k001",
+    "k002"
+  ],
+  "note": "known_failures must not grow; a row that starts passing must have its marker removed. Thresholds ratchet upward only -- for a given (corpus, embedder, gate model, judge). Change any of those and they are re-measured, never lowered to clear a red build. Datasets are stored per embedder for the same reason: which rows are known failures is a property of the retrieval config.",
+  "observed_when_set": {
+    "answer_relevance": {
+      "mean": 0.5044,
+      "p10": 0.0
+    },
+    "answerable_rows": 30,
+    "citation_coverage": {
+      "mean": 1.0,
+      "p10": 1.0
+    },
+    "context_relevance": {
+      "mean": 1.0,
+      "p10": 1.0
+    },
+    "corpus": "ukpga_20250036_en.pdf (Employment Rights Act 2025 c. 36, 335 pages)",
+    "date": "2026-08-28",
+    "embedder": "openai-text-embedding-3-small",
+    "expected_citation_recall": "30/30 = 100.0%",
+    "gate_model": "stub-local",
+    "groundedness": {
+      "mean": 1.0,
+      "p10": 1.0
+    },
+    "index_version": "parser-6+openai-text-embedding-3-small+bc461767",
+    "ingest_seconds": {
+      "observed": 18.9,
+      "range_across_runs": [
+        16.3,
+        18.9
+      ]
+    },
+    "judge": "heuristic-lexical",
+    "judge_kappa": 0.8828,
+    "retrieve_p50_ms": 142.8,
+    "why_answer_relevance_is_low": "answer_relevance is the only threshold not at 0.90. The heuristic judge scores it as lexical overlap with the question and is documented as paraphrase-blind by design; statutory drafting does not repeat its own headings, so s.159 -- titled 'Commencement' -- says 'come into force', and the offline extractive stub quoting it scores 0.00 on a question about commencement while scoring groundedness 1.00 and citation coverage 1.00 on the same answer. The floor sits under the measured value for stub-local, which the gate pins for determinism. It is not a claim about the serving model: deepseek-v4-flash scores 0.82 mean answer relevance on these rows."
+  },
+  "quality_thresholds": {
+    "answer_relevance_mean": 0.4,
+    "citation_coverage_mean": 0.9,
+    "citation_coverage_p10": 0.7,
+    "context_relevance_mean": 0.9,
+    "groundedness_mean": 0.9,
+    "groundedness_p10": 0.7,
+    "judge_kappa": 0.6
+  }
+}

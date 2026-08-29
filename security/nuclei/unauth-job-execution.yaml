@@ -1,0 +1,38 @@
+id: rights-agent-unauth-job-execution
+info:
+  name: Dashboard job endpoint accepts unauthenticated execution
+  author: employment-rights-agent
+  severity: high
+  description: |
+    POST /api/job runs a named job with no authentication. Two of the jobs are
+    destructive: `reset` deletes the metrics log and restarts the audit chain
+    from genesis, and `tamper_audit` deliberately corrupts a record so the chain
+    no longer verifies.
+
+    That matters more here than in a typical demo app. This project's own
+    argument is that the audit record is what you investigate an incident with;
+    an unauthenticated request that can erase or invalidate it removes the
+    control the record exists to provide.
+
+    Probed with `verify_audit`, which only reads and writes a checkpoint, so the
+    check proves the exposure without causing the damage.
+  remediation: |
+    Bind the dashboard to loopback only, and require RIGHTS_DEMO_TOKEN for
+    mutating endpoints when it is reachable from anywhere else.
+  tags: rights-agent,auth,exposure
+http:
+  - raw:
+      - |
+        POST /api/job HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"job":"verify_audit"}
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words:
+          - '"accepted": true'

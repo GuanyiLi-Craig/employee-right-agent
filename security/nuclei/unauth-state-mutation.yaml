@@ -1,0 +1,30 @@
+id: rights-agent-unauth-state-mutation
+info:
+  name: Serving mode can be changed without authentication
+  author: employment-rights-agent
+  severity: medium
+  description: |
+    POST /api/degraded switches the agent into its degraded-fallback simulation
+    for every subsequent request: lower-ranked evidence, no citations, higher
+    latency. Unauthenticated, that is a quiet quality-of-service attack — and
+    during a live demo, a way to make the system look broken on cue.
+
+    Probed by setting it to its current value (false), so nothing changes.
+  remediation: Require RIGHTS_DEMO_TOKEN for mutating endpoints.
+  tags: rights-agent,auth,exposure
+http:
+  - raw:
+      - |
+        POST /api/degraded HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"degraded":false}
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words:
+          - '"degraded"'

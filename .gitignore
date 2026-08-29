@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project artefacts: the index, the manifests and the metrics log are
+# rebuilt by the embedding pipeline and must never be committed.
+runs/
+.env
+
+# Browser-harness install and run output. The .mjs suites and package.json are
+# committed; everything they produce is regenerated on the next run.
+uitest/node_modules/
+uitest/shots/
+uitest/part*.json
+
+# macOS finder droppings.
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes

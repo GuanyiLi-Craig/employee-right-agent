@@ -1,0 +1,42 @@
+id: rights-agent-guessable-session-id
+info:
+  name: Chat transcript readable from a predictable session id
+  author: employment-rights-agent
+  severity: medium
+  description: |
+    GET /api/chat/history?session_id=<id> returns a transcript to anyone holding
+    the id, with no other check. That is a defensible design -- the id *is* the
+    credential -- but only while the id is unguessable.
+
+    It was not. Ids came from `Math.random().toString(36).slice(2, 10)`: about 41
+    bits from a generator that is not a CSPRNG. The traffic controls were worse,
+    minting `baseline-<unix seconds>`.
+
+    This template probes the shapes that were guessable. A match means an id an
+    attacker could reach by enumeration returned somebody's conversation. It
+    deliberately does *not* create a session first: reading back an id you just
+    chose proves nothing, which is what the first version of this template did.
+  remediation: |
+    Mint session ids from a CSPRNG with at least 128 bits
+    (`crypto.getRandomValues`), and never from a timestamp.
+  tags: rights-agent,idor,entropy
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/chat/history?session_id=baseline-1787928581"
+      - "{{BaseURL}}/api/chat/history?session_id=incident-1787928581"
+      - "{{BaseURL}}/api/chat/history?session_id=chat-a1b2c3d4"
+      - "{{BaseURL}}/api/chat/history?session_id=chat-00000000"
+      - "{{BaseURL}}/api/chat/history?session_id=warm"
+      - "{{BaseURL}}/api/chat/history?session_id=demo"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        condition: and
+        words:
+          - '"role": "user"'
+          - '"role": "agent"'

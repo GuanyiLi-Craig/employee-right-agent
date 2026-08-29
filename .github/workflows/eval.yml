@@ -1,0 +1,128 @@
+name: eval
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Gate the corpus the committed datasets were generated for. The expected
+  # citations in evals/golden.jsonl name provisions of this Act; pointed at any
+  # other document every row fails on a citation that was never in the index,
+  # and it reads as a retrieval regression. test_the_golden_set_was_generated_for_this_index
+  # turns that into one legible failure if the two ever drift.
+  RIGHTS_CORPUS: data/ukpga_20250036_en.pdf
+  # The gate stays on the offline embedder. It is the only one of the three that
+  # is bit-deterministic -- MiniLM's floats move with thread count and OpenAI's
+  # are not promised stable across calls -- and a gate whose vectors can shift
+  # under it fails for reasons unrelated to the change under test. It also needs
+  # no key and no network. The demo runs `openai`, which retrieves better; both
+  # have their own committed dataset under evals/datasets/.
+  RIGHTS_EMBEDDER: hashing
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install poppler
+        # Only needed when the corpus is a PDF, but installing it here means a
+        # contributor can swap the corpus without also editing CI.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.4"
+          enable-cache: true
+
+      - name: Sync the environment from the lockfile
+        run: uv sync --frozen --extra trace --group dev
+
+      - name: Unit tests
+        run: uv run pytest tests/ -q
+
+      # Rebuild the index rather than committing one. A prebuilt index means the
+      # eval tests a stale artefact and passes while the thing you changed is
+      # broken.
+      - name: Build the index (offline embedder)
+        run: |
+          uv run rights-ingest --no-onnx
+          uv run rights-ingest-simple --no-onnx
+
+      - name: Deterministic gate
+        run: uv run pytest evals/test_deterministic.py -q
+
+      - name: Quality gate
+        run: uv run pytest evals/test_quality.py -q
+
+      - name: Gate summary
+        if: always()
+        run: uv run python -m rights_agent evaluate --gate --quiet
+
+      - name: Corpus generator is reproducible
+        # The generated Act is not what the gate above indexes any more, but it
+        # is still the offline fallback corpus and the fixture the parser tests
+        # are written against. Two generations must produce identical bytes, or
+        # index_version stops meaning anything.
+        run: |
+          uv run rights-corpus --out /tmp/corpus.check.txt
+          cmp data/corpus.layout.txt /tmp/corpus.check.txt
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-artefacts
+          path: |
+            runs/index_manifest.json
+            runs/simple_manifest.json
+            runs/metrics.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: runtime
+          load: true
+          tags: employment-rights-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: The embedding pipeline runs as a separate job
+        run: |
+          docker volume create rights-index
+          docker run --rm -v rights-index:/var/lib/rights-agent/runs \
+            -e RIGHTS_TRACING=false employment-rights-agent:ci ingest
+
+      - name: The query service reads what the pipeline wrote
+        run: |
+          docker run --rm -v rights-index:/var/lib/rights-agent/runs \
+            -e RIGHTS_TRACING=false employment-rights-agent:ci \
+            ask "What does the document say about bereavement leave?"
+
+      - name: A reader with no index fails with the command that fixes it
+        run: |
+          docker volume create rights-empty
+          if docker run --rm -v rights-empty:/var/lib/rights-agent/runs \
+               -e RIGHTS_TRACING=false employment-rights-agent:ci \
+               ask "anything" 2>err.log; then
+            echo "expected a non-zero exit with no index" && exit 1
+          fi
+          grep -q "docker compose run --rm ingest" err.log

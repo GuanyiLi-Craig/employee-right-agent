@@ -1,0 +1,269 @@
+# Employment rights agent — observable, evaluable RAG.
+#
+#   docker compose run --rm ingest        # 1. build the index (separate job)
+#   docker compose up -d                  # 2. phoenix + dashboard
+#   open http://localhost:8000            #    dashboard
+#   open http://localhost:6006            #    traces
+#
+# The embedding pipeline is a job, not a service. It is the only writer of the
+# Chroma index, it runs to completion and exits, and the query service never
+# starts one implicitly — so re-indexing is always a deliberate act with a
+# recorded index_version, and a bad index can never be half-published by a
+# service restart loop.
+
+name: employment-rights-agent
+
+x-image: &image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: runtime
+  image: employment-rights-agent:local
+
+x-volumes: &volumes
+  - index:/var/lib/rights-agent/runs
+  - ./data:/app/data:ro
+  # The datasets are baked into the image too, so it runs standalone. Mounted
+  # here as well because they are regenerated whenever the parser or the
+  # embedder changes, and a dashboard reading the image's copy shows the
+  # previous index's golden set while claiming to describe this one. Read-only:
+  # `goldens` overrides this with a writable mount of the same path.
+  - ./evals:/app/evals:ro
+  # The ONNX embedder fetches a 79MB model on first use. Cached in a named
+  # volume so it is downloaded once for the project rather than once per `--rm`
+  # container -- and never in front of an audience. `make warm` fills it.
+  - model-cache:/home/rights/.cache/chroma
+
+x-env: &env
+  RIGHTS_RUNS_DIR: /var/lib/rights-agent/runs
+  RIGHTS_DATA_DIR: /app/data
+  # Which document to index. Empty means data/corpus.layout.txt, the generated
+  # demonstration Act. Point it at a PDF in ./data to use a real one -- and note
+  # it must be listed here: compose uses .env for variable *substitution*, and a
+  # variable not named in an `environment:` block never reaches the container.
+  RIGHTS_CORPUS: ${RIGHTS_CORPUS:-}
+  # The offline embedder: deterministic, no model download, no network, and 86.7%
+  # recall on this corpus. `onnx` reaches 90.0% from a model baked into the image;
+  # `openai` reaches 100.0% for about a penny an index. Re-run ingest after
+  # changing it -- and note the datasets are per embedder (evals/datasets/).
+  RIGHTS_EMBEDDER: ${RIGHTS_EMBEDDER:-hashing}
+  RIGHTS_MODEL: ${RIGHTS_MODEL:-stub-local}
+  RIGHTS_TOP_K: ${RIGHTS_TOP_K:-6}
+  RIGHTS_SUFFICIENCY: ${RIGHTS_SUFFICIENCY:-0.45}
+  RIGHTS_MAX_ATTEMPTS: ${RIGHTS_MAX_ATTEMPTS:-2}
+  # Judged scores pushed to Phoenix as span annotations as well as attributes,
+  # off the request path. Empty means "follow RIGHTS_TRACING", which is what an
+  # unset variable should mean: annotating spans that were never exported writes
+  # feedback about nothing and costs a failed HTTP call to discover it.
+  RIGHTS_ANNOTATE_TRACES: ${RIGHTS_ANNOTATE_TRACES:-}
+  RIGHTS_LOG_JSON: ${RIGHTS_LOG_JSON:-true}
+  RIGHTS_LOG_LEVEL: ${RIGHTS_LOG_LEVEL:-INFO}
+  # Audit and cost reporting. Retention below the AI Act Articles 19/26(6)
+  # floor is refused at startup; see src/rights_agent/audit.py.
+  RIGHTS_AUDIT: ${RIGHTS_AUDIT:-true}
+  RIGHTS_RETENTION_DAYS: ${RIGHTS_RETENTION_DAYS:-183}
+  RIGHTS_TENANT: ${RIGHTS_TENANT:-default}
+  RIGHTS_PROJECTION_RPD: ${RIGHTS_PROJECTION_RPD:-50000}
+  RIGHTS_JUDGE_SAMPLE_RATE: ${RIGHTS_JUDGE_SAMPLE_RATE:-0.10}
+  RIGHTS_PANEL_WINDOW: ${RIGHTS_PANEL_WINDOW:-20}
+  PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
+  PHOENIX_PROJECT_NAME: ${PHOENIX_PROJECT_NAME:-rights-rag-agent}
+  # Whether a model that supports it may think before answering. Off, and sent
+  # explicitly: DeepSeek's `thinking` parameter defaults to enabled.
+  RIGHTS_THINKING: ${RIGHTS_THINKING:-false}
+  RIGHTS_DEEPSEEK_BASE_URL: ${RIGHTS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+  RIGHTS_JUDGE_MODEL: ${RIGHTS_JUDGE_MODEL:-}
+  # Optional: only used if RIGHTS_MODEL names a hosted model. A missing key falls
+  # back to the offline stub rather than failing the request.
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+services:
+  # ------------------------------------------------------------------------ #
+  # Tracing and experiments. Kill this at any point: the agent keeps
+  # answering, spans simply stop being exported.
+  # ------------------------------------------------------------------------ #
+  phoenix:
+    image: arizephoenix/phoenix:version-20.4.0
+    ports:
+      # Loopback only, for the same reason as the dashboard and a stronger one:
+      # the trace store holds the questions, the retrieved text and the answers.
+      # RAG expands the model's knowledge boundary; the trace store expands your
+      # data-protection boundary. Phoenix here runs with auth disabled.
+      - "${PHOENIX_BIND:-127.0.0.1}:${PHOENIX_PORT:-6006}:6006"
+      - "${PHOENIX_BIND:-127.0.0.1}:${PHOENIX_GRPC_PORT:-4317}:4317"
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/phoenix
+      PHOENIX_ENABLE_AUTH: "false"
+    volumes:
+      - phoenix-data:/mnt/phoenix
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:6006/healthz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------ #
+  # The query service. Reads the index; never writes it.
+  # ------------------------------------------------------------------------ #
+  dashboard:
+    <<: *image
+    environment:
+      <<: *env
+      # 0.0.0.0 inside the container is required for the published port to reach
+      # it; the exposure is bounded by the loopback publish above. A token is
+      # still required, because the bind address alone is not a control.
+      # 0.0.0.0 inside the container is required for the published port to reach
+      # it. The control is the loopback publish above, not this bind address --
+      # so the app's own refusal is waived here, deliberately and visibly.
+      #
+      # No default token: a shared secret printed in a public compose file is a
+      # fake control, and a fake control is worse than an absent one. If you set
+      # DASHBOARD_BIND to expose the port, set RIGHTS_DEMO_TOKEN as well and the
+      # dashboard will ask for it once.
+      RIGHTS_DEMO_HOST: 0.0.0.0
+      RIGHTS_DEMO_PORT: 8000
+      RIGHTS_DEMO_TOKEN: ${RIGHTS_DEMO_TOKEN:-}
+      RIGHTS_DEMO_ALLOW_INSECURE: ${RIGHTS_DEMO_ALLOW_INSECURE:-true}
+      RIGHTS_DEMO_MAX_CONCURRENT_CHATS: ${RIGHTS_DEMO_MAX_CONCURRENT_CHATS:-4}
+      # Give the ingest job time to publish a manifest if both are started at
+      # once; after this it exits with the command that fixes it.
+      RIGHTS_WAIT_FOR_INDEX: ${RIGHTS_WAIT_FOR_INDEX:-90}
+    command: ["demo"]
+    ports:
+      # Loopback only. `0.0.0.0:8000` would publish the dashboard to every
+      # network this machine is on, and /api/job can erase the audit chain.
+      # Override DASHBOARD_BIND to expose it deliberately, with a token set.
+      - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-8000}:8000"
+    volumes: *volumes
+    depends_on:
+      phoenix:
+        condition: service_started
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------ #
+  # The embedding pipeline — jobs, not services.
+  #   docker compose run --rm ingest
+  #   docker compose run --rm ingest-simple
+  # ------------------------------------------------------------------------ #
+  ingest:
+    <<: *image
+    profiles: ["pipeline"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    command: ["ingest"]
+    volumes: *volumes
+    restart: "no"
+
+  ingest-simple:
+    <<: *image
+    profiles: ["pipeline"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    command: ["ingest-simple"]
+    volumes: *volumes
+    restart: "no"
+
+  # Regenerate the committed corpus into ./data (writable bind mount).
+  corpus:
+    <<: *image
+    profiles: ["pipeline"]
+    environment:
+      <<: *env
+    # Writes into the bind-mounted ./data, so it needs a uid that can write
+    # there; on Linux pass `--user "$(id -u):$(id -g)"`.
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "corpus"]
+    command: ["--out", "/app/data/corpus.layout.txt"]
+    volumes:
+      - ./data:/app/data
+    restart: "no"
+
+  # ------------------------------------------------------------------------ #
+  # Tools. All read-only with respect to the index.
+  # ------------------------------------------------------------------------ #
+  # `docker compose run --rm ask "your question"` — the subcommand lives in the
+  # entrypoint, so run arguments append to it rather than replacing it.
+  ask:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "ask"]
+    command: ["What does the document say about bereavement leave?"]
+    volumes: *volumes
+    depends_on:
+      phoenix:
+        condition: service_started
+    restart: "no"
+
+  compare:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "compare"]
+    command: []
+    volumes: *volumes
+    restart: "no"
+
+  evaluate:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "evaluate"]
+    command: ["--gate"]
+    volumes: *volumes
+    depends_on:
+      phoenix:
+        condition: service_started
+    restart: "no"
+
+  # Regenerate the eval datasets against the live index. Its own service, and
+  # its own writable mount of ./evals, because a read-only bind cannot be
+  # overridden by a later -v: docker keeps the stricter one.
+  #
+  #   docker compose --profile tools run --rm goldens --write-baseline
+  #
+  # Writes to evals/datasets/<embedder>/, since which rows are known failures is
+  # a property of the retrieval config rather than of the corpus alone.
+  goldens:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "goldens"]
+    volumes:
+      - index:/var/lib/rights-agent/runs
+      - ./data:/app/data:ro
+      - ./evals:/app/evals
+    restart: "no"
+
+  # The CI gate. Built from the dev target so pytest is present.
+  evals:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    image: employment-rights-agent:dev
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh", "evals"]
+    command: ["-q"]
+    volumes: *volumes
+    restart: "no"
+
+volumes:
+  index:
+  phoenix-data:
+  model-cache:

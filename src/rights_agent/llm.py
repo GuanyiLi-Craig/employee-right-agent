@@ -26,11 +26,12 @@ import hashlib
 import os
 import re
 import time
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from statistics import mean
-from typing import Any, Callable, Iterator, Protocol, Sequence
+from typing import Any, Protocol
 
 from rights_agent.config import PROMPT_VERSION, Settings, cost_usd, price_for
 from rights_agent.log import get_logger
@@ -214,7 +215,7 @@ def count_tokens(text: str, model: str = STUB_MODEL) -> int:
     if _encoder is not None:
         try:
             return len(_encoder.encode(text))  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110 - falls through to the estimate
             pass
     return max(1, (len(text) + 3) // 4)
 
@@ -316,7 +317,7 @@ class StubClient:
         if self.degraded:
             # Degraded mode picks lower-ranked evidence: the signature of a
             # primary model failing over to a weaker fallback.
-            ordered = list(reversed(ordered))
+            ordered.reverse()
         return ordered[:3]
 
     def _compose(self, question: str, context: str) -> str:
@@ -386,10 +387,7 @@ def _split_prompt(prompt: str) -> tuple[str, str]:
         _, _, tail = prompt.partition("Question:")
         question, _, rest = tail.partition("\n")
         question = question.strip()
-        if "Context:" in rest:
-            context = rest.partition("Context:")[2].strip()
-        else:
-            context = rest.strip()
+        context = rest.partition("Context:")[2].strip() if "Context:" in rest else rest.strip()
     elif "Context:" in prompt:
         context = prompt.partition("Context:")[2].strip()
     return question, context
@@ -536,8 +534,7 @@ class AnthropicClient:
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
         ) as stream:
-            for text in stream.text_stream:
-                yield text
+            yield from stream.text_stream
             final = stream.get_final_message()
             usage = final.usage
             self._usage = (
@@ -586,7 +583,7 @@ class DegradedClient:
 
     degraded = True
 
-    def __init__(self, inner: "LLMClient") -> None:
+    def __init__(self, inner: LLMClient) -> None:
         self._inner = inner
 
     @property
@@ -781,7 +778,7 @@ def generate(
             citations=tuple(extract_citations(answer)),
             error=error,
         )
-        total_cost, breakdown = result.cost
+        total_cost, _breakdown = result.cost
         price = price_for(result.model)
         current.set_attributes(
             {

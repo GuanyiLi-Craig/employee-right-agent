@@ -4,7 +4,7 @@
 # "works on my machine" comes from.
 
 .DEFAULT_GOAL := help
-.PHONY: help install corpus ingest ingest-simple ask compare demo goldens \
+.PHONY: help install lint lint-fix corpus ingest ingest-simple ask compare demo goldens \
         evaluate gate calibrate test test-unit test-evals clean \
         docker-build docker-ingest docker-up docker-down docker-evals docker-logs ui-test phoenix pentest
 
@@ -19,6 +19,12 @@ help: ## Show this help
 
 install: ## Sync the environment from the lockfile
 	$(UV) sync --extra trace --extra models --group dev
+
+lint: ## Ruff, the same check CI runs
+	$(UV) run ruff check .
+
+lint-fix: ## Apply the fixes ruff can make safely
+	$(UV) run ruff check . --fix
 
 corpus: ## Regenerate the committed demonstration corpus
 	$(UV) run rights-corpus --out data/corpus.layout.txt

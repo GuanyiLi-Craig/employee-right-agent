@@ -155,7 +155,7 @@ class _FakeEmbeddings:
             for i in range(len(input))
         ]
         if self.reorder:
-            items = list(reversed(items))
+            items.reverse()
         usage = type("Usage", (), {"total_tokens": 7 * len(input)})()
         return type("Response", (), {"data": items, "usage": usage})()
 

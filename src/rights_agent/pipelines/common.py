@@ -11,7 +11,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from rights_agent.config import Settings, settings as load_settings
+from rights_agent.config import Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.embedding import HASHING_NAME, ONNX_NAME, get_embedder
 from rights_agent.log import configure_logging, get_logger
 

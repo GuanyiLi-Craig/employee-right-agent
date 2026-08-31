@@ -25,17 +25,17 @@ from rights_agent.store import (
 
 
 def manifest(**overrides: object) -> IndexManifest:
-    base = dict(
-        index_version="parser-3+hashing-bow-512+abcd1234",
-        embedding_model=HASHING_NAME,
-        parser_version="parser-3",
-        corpus_path="/app/data/corpus.layout.txt",
-        corpus_sha="abcd1234",
-        collections={"corpus_leaves": 1087, "corpus_parents": 187},
-        tree_counts={"section": 175},
-        built_at="2026-08-28T00:00:00Z",
-        build_seconds=0.8,
-    )
+    base = {
+        "index_version": "parser-3+hashing-bow-512+abcd1234",
+        "embedding_model": HASHING_NAME,
+        "parser_version": "parser-3",
+        "corpus_path": "/app/data/corpus.layout.txt",
+        "corpus_sha": "abcd1234",
+        "collections": {"corpus_leaves": 1087, "corpus_parents": 187},
+        "tree_counts": {"section": 175},
+        "built_at": "2026-08-28T00:00:00Z",
+        "build_seconds": 0.8,
+    }
     base.update(overrides)
     return IndexManifest(**base)  # type: ignore[arg-type]
 

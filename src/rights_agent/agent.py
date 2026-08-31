@@ -11,19 +11,23 @@ by accident.
 
 from __future__ import annotations
 
+import secrets
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
-from rights_agent.audit import AuditError, AuditLog, fingerprint, redact
-from rights_agent.config import PARSER_VERSION, PROMPT_VERSION, Settings, settings as load_settings
-from rights_agent.conversation import Contextualisation, ConversationStore, Turn, contextualise
-from rights_agent.costs import breakdown as cost_breakdown_model, trace_bytes_for
 from rights_agent.annotations import annotate_span_later, judge_annotations
-from rights_agent.llm import stream_tokens_to
+from rights_agent.audit import AuditError, AuditLog, fingerprint, redact
+from rights_agent.config import PARSER_VERSION, PROMPT_VERSION, Settings
+from rights_agent.config import settings as load_settings
+from rights_agent.conversation import Contextualisation, ConversationStore, Turn, contextualise
+from rights_agent.costs import breakdown as cost_breakdown_model
+from rights_agent.costs import trace_bytes_for
 from rights_agent.graph import AgentDeps, AgentState, build_graph, initial_state
+from rights_agent.llm import stream_tokens_to
 from rights_agent.log import bind_request, get_logger
 from rights_agent.metrics import MetricsSink, RequestMetrics, sink_for
 from rights_agent.store import now_iso
@@ -178,7 +182,10 @@ class Agent:
             raise ValueError("question must not be empty")
 
         request_id = uuid.uuid4().hex[:12]
-        session_id = session_id or f"sess-{uuid.uuid4().hex[:8]}"
+        # A session id keys the transcript, and the HTTP layer treats holding it
+        # as authorisation to read that transcript back. It is therefore a
+        # credential, and gets a credential's entropy -- not a truncated uuid.
+        session_id = session_id or f"sess-{secrets.token_hex(16)}"
         tenant = tenant or self.settings.tenant
         started = time.perf_counter()
 
@@ -191,83 +198,82 @@ class Agent:
             else Contextualisation(query=question, used_history=False, reason="history disabled")
         )
 
-        with bind_request(request_id):
-            with span(
-                "rag-agent",
-                CHAIN,
-                **{
-                    SEMCONV.INPUT_VALUE: question,
-                    SEMCONV.SESSION_ID: session_id,
-                    SEMCONV.USER_ID: user_id or "anonymous",
-                    "metadata.index_version": self.index_version,
-                    "metadata.prompt_version": PROMPT_VERSION,
-                    "metadata.request_id": request_id,
-                    "metadata.tenant": tenant,
-                    "metadata.degraded": self.degraded,
-                },
-            ) as root:
-                root.set_attributes(
-                    {
-                        "conversation.history_used": resolved.used_history,
-                        "conversation.borrowed_terms": list(resolved.borrowed),
-                        "conversation.turns": len(self.conversations.history(session_id)),
-                    }
-                )
-                state: AgentState = initial_state(
-                    question,
-                    session_id=session_id,
-                    user_id=user_id,
-                    scored_question=resolved.query,
-                )
-                state["rewritten_query"] = resolved.query
-                error = ""
-                try:
-                    with stream_tokens_to(on_token):
-                        final = self.graph.invoke(
-                            state,
-                            config={
-                                # Unique per request. See the module docstring.
-                                "configurable": {"thread_id": f"{session_id}:{request_id}"},
-                                "run_name": "rag-agent",
-                                "metadata": {
-                                    "session_id": session_id,
-                                    "request_id": request_id,
-                                    "prompt_version": PROMPT_VERSION,
-                                    "index_version": self.index_version,
-                                },
+        with bind_request(request_id), span(
+            "rag-agent",
+            CHAIN,
+            **{
+                SEMCONV.INPUT_VALUE: question,
+                SEMCONV.SESSION_ID: session_id,
+                SEMCONV.USER_ID: user_id or "anonymous",
+                "metadata.index_version": self.index_version,
+                "metadata.prompt_version": PROMPT_VERSION,
+                "metadata.request_id": request_id,
+                "metadata.tenant": tenant,
+                "metadata.degraded": self.degraded,
+            },
+        ) as root:
+            root.set_attributes(
+                {
+                    "conversation.history_used": resolved.used_history,
+                    "conversation.borrowed_terms": list(resolved.borrowed),
+                    "conversation.turns": len(self.conversations.history(session_id)),
+                }
+            )
+            state: AgentState = initial_state(
+                question,
+                session_id=session_id,
+                user_id=user_id,
+                scored_question=resolved.query,
+            )
+            state["rewritten_query"] = resolved.query
+            error = ""
+            try:
+                with stream_tokens_to(on_token):
+                    final = self.graph.invoke(
+                        state,
+                        config={
+                            # Unique per request. See the module docstring.
+                            "configurable": {"thread_id": f"{session_id}:{request_id}"},
+                            "run_name": "rag-agent",
+                            "metadata": {
+                                "session_id": session_id,
+                                "request_id": request_id,
+                                "prompt_version": PROMPT_VERSION,
+                                "index_version": self.index_version,
                             },
-                        )
-                except Exception as exc:  # noqa: BLE001 - the row must still be written
-                    error = f"{type(exc).__name__}: {exc}"
-                    log.exception("graph invocation failed")
-                    root.record_exception(exc)
-                    final = dict(state)
+                        },
+                    )
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                log.exception("graph invocation failed")
+                root.record_exception(exc)
+                final = dict(state)
 
-                e2e_ms = round((time.perf_counter() - started) * 1_000, 3)
-                answer = self._build_answer(
-                    request_id=request_id,
-                    session_id=session_id,
-                    user_id=user_id,
-                    tenant=tenant,
-                    question=question,
-                    final=final,
-                    e2e_ms=e2e_ms,
-                    error=error,
-                    root=root,
-                    resolved=resolved,
-                )
-                root.set_output(answer.answer)
-                root.set_attributes(
-                    {
-                        "gate.sufficiency": answer.sufficiency,
-                        "gate.refused": answer.refused,
-                        "llm.cost.total_usd": answer.metrics.cost_usd,
-                        "latency.e2e_ms": e2e_ms,
-                        "latency.non_generation_ms": answer.metrics.non_generation_ms(),
-                        "latency.orchestration_ms": answer.metrics.orchestration_ms(),
-                        "latency.formula_gap_ms": answer.metrics.formula_gap_ms(),
-                    }
-                )
+            e2e_ms = round((time.perf_counter() - started) * 1_000, 3)
+            answer = self._build_answer(
+                request_id=request_id,
+                session_id=session_id,
+                user_id=user_id,
+                tenant=tenant,
+                question=question,
+                final=final,
+                e2e_ms=e2e_ms,
+                error=error,
+                root=root,
+                resolved=resolved,
+            )
+            root.set_output(answer.answer)
+            root.set_attributes(
+                {
+                    "gate.sufficiency": answer.sufficiency,
+                    "gate.refused": answer.refused,
+                    "llm.cost.total_usd": answer.metrics.cost_usd,
+                    "latency.e2e_ms": e2e_ms,
+                    "latency.non_generation_ms": answer.metrics.non_generation_ms(),
+                    "latency.orchestration_ms": answer.metrics.orchestration_ms(),
+                    "latency.formula_gap_ms": answer.metrics.formula_gap_ms(),
+                }
+            )
 
         if record:
             self.sink.append(answer.metrics)
@@ -293,7 +299,7 @@ class Agent:
         return answer
 
     # ---- the audit record -------------------------------------------------
-    def _annotate(self, answer: "AgentAnswer") -> None:
+    def _annotate(self, answer: AgentAnswer) -> None:
         """Attach the judged scores to the request's own trace, in Phoenix.
 
         The scores are already span *attributes*, which is enough to read one

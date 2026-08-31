@@ -176,7 +176,7 @@ def test_the_embedder_choices_match_the_embedding_module() -> None:
     from rights_agent.embedding import KNOWN_EMBEDDERS, PREFERENCE_ALIASES
 
     buildable = set(KNOWN_EMBEDDERS) | set(PREFERENCE_ALIASES) | {"auto", "hashing", "onnx"}
-    assert EMBEDDER_CHOICES == buildable, (
+    assert buildable == EMBEDDER_CHOICES, (
         "RIGHTS_EMBEDDER accepts a value the embedding module cannot build, or "
         f"rejects one it can: {sorted(EMBEDDER_CHOICES ^ buildable)}"
     )
@@ -198,6 +198,6 @@ def test_every_gate_path_pins_the_same_model() -> None:
     root = Path(__file__).resolve().parents[1]
     for relative in ("evals/conftest.py", "src/rights_agent/demo/jobs.py"):
         source = (root / relative).read_text()
-        assert not re.search(r'^GATE_MODEL\s*=\s*"', source, re.M), (
+        assert not re.search(r'^GATE_MODEL\s*=\s*"', source, re.MULTILINE), (
             f"{relative} defines its own GATE_MODEL instead of importing the one"
         )

@@ -15,22 +15,23 @@ And before any of that: **the judge's kappa.**  Gate the instrument before you
 gate with it.  If the kappa assertion fails, every other threshold in this file
 is measuring nothing, so it runs first and its failure message says so.
 
-Thresholds live in ``evals/baseline.json``, set *below* observed values on a
+Thresholds live in ``evals/datasets/<embedder>/baseline.json``, set *below* observed values on a
 green build.  Ratchet them upward as the system improves; **never** downward to
 fix a red build.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from statistics import mean
-from typing import Any, Sequence
+from typing import Any
 
 import pytest
 
+from conftest import GoldenResult
 from rights_agent.judges import HeuristicJudge, JudgeScores, calibrate
 from rights_agent.metrics import percentile
 
-from conftest import GoldenResult
 
 #: The dimension pair that decides whether an answer is shippable: supported
 #: *and* attributable.  Calibrating against groundedness alone marks an

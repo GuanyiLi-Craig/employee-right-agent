@@ -13,8 +13,9 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 _local = threading.local()
 
@@ -90,7 +91,7 @@ def configure_logging(level: str | None = None, *, json_format: bool | None = No
                 resolved = settings()
                 level = level or resolved.log_level
                 json_format = resolved.log_json if json_format is None else json_format
-            except Exception:  # pragma: no cover - fall back to env defaults
+            except Exception:  # noqa: BLE001 - pragma: no cover, fall back to env defaults
                 level = level or os.environ.get("RIGHTS_LOG_LEVEL", "INFO").upper()
                 json_format = bool(json_format)
 

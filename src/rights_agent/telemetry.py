@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any
 
 from rights_agent.log import get_logger
 
@@ -57,9 +58,10 @@ class _Semconv:
     INPUT_VALUE = "input.value"
     OUTPUT_VALUE = "output.value"
     LLM_MODEL_NAME = "llm.model_name"
-    LLM_TOKEN_COUNT_PROMPT = "llm.token_count.prompt"
-    LLM_TOKEN_COUNT_COMPLETION = "llm.token_count.completion"
-    LLM_TOKEN_COUNT_TOTAL = "llm.token_count.total"
+    # These three name OpenInference token *counts*, not credentials.
+    LLM_TOKEN_COUNT_PROMPT = "llm.token_count.prompt"  # noqa: S105
+    LLM_TOKEN_COUNT_COMPLETION = "llm.token_count.completion"  # noqa: S105
+    LLM_TOKEN_COUNT_TOTAL = "llm.token_count.total"  # noqa: S105
     SESSION_ID = "session.id"
     USER_ID = "user.id"
     METADATA = "metadata"
@@ -203,7 +205,7 @@ def shutdown_telemetry(timeout_millis: int = 3_000) -> None:
 # --------------------------------------------------------------------------- #
 def coerce_attribute(value: Any) -> Any:
     """Make ``value`` safe to set as an OTel attribute."""
-    if isinstance(value, bool) or isinstance(value, (int, float)):
+    if isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
         return _truncate(value)

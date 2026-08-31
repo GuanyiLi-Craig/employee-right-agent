@@ -17,9 +17,9 @@ from pathlib import Path
 
 from rights_agent.config import CHUNK_CHARS, OVERLAP_CHARS, SIMPLE_COLLECTION, Settings
 from rights_agent.document.parser import corpus_fingerprint, load_corpus_text
+from rights_agent.entrypoints import operator_error_exit
 from rights_agent.log import get_logger
 from rights_agent.pipelines.common import build_parser, resolve_embedder, settings_from_args
-from rights_agent.entrypoints import operator_error_exit
 from rights_agent.store import (
     add_in_batches,
     chroma_client,

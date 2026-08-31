@@ -24,8 +24,9 @@ import re
 import threading
 import time
 from collections import deque
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, Deque, Iterable, Mapping, Sequence
+from typing import Any
 
 from rights_agent.log import get_logger
 from rights_agent.retrieval import GENERIC_TERMS
@@ -140,8 +141,8 @@ class ConversationStore:
     def __init__(self, max_turns: int = MAX_TURNS, max_sessions: int = MAX_SESSIONS) -> None:
         self.max_turns = max_turns
         self.max_sessions = max_sessions
-        self._sessions: dict[str, Deque[Turn]] = {}
-        self._order: Deque[str] = deque()
+        self._sessions: dict[str, deque[Turn]] = {}
+        self._order: deque[str] = deque()
         self._lock = threading.Lock()
 
     def add(self, session_id: str, turn: Turn) -> None:
@@ -231,7 +232,7 @@ def _epoch(value: Any) -> float:
     from datetime import datetime
 
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(str(value)).timestamp()
     except (TypeError, ValueError):
         return 0.0
 
@@ -374,9 +375,7 @@ def looks_like_follow_up(question: str) -> bool:
         return True
     if len(words) <= SHORT_QUESTION_WORDS and not _terms(question):
         return True
-    if _ANAPHORA & set(words) and len(_terms(question)) <= 1:
-        return True
-    return False
+    return bool(_ANAPHORA & set(words) and len(_terms(question)) <= 1)
 
 
 @dataclass(frozen=True, slots=True)

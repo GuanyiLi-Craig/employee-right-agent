@@ -584,7 +584,7 @@ def _emit_inserted(
     for index, clause in enumerate(
         (
             f"An employer must secure that every {WORKER} to whom this section applies is offered {topic} in accordance with this Chapter.",
-            f"The duty under subsection (1) applies in relation to each relevant reference period beginning after the coming into force of this section.",
+            "The duty under subsection (1) applies in relation to each relevant reference period beginning after the coming into force of this section.",
             f"Regulations may make provision about the manner in which {topic} is to be offered, including provision about the form of an offer and the period for acceptance.",
             f"A {WORKER} may present a complaint to an employment tribunal that an employer has failed to comply with subsection (1).",
         )

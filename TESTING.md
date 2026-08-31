@@ -243,12 +243,12 @@ verified before being written.
 
 ```bash
 head -1 evals/datasets/openai-text-embedding-3-small/golden.jsonl
-cat evals/baseline.json
+cat evals/datasets/openai-text-embedding-3-small/baseline.json
 uv run python -m rights_agent goldens --write-baseline   # regenerate deliberately
 ```
 
 Golden rows assert **citations, not prose**: wording changes when models change,
-the source does not. `evals/baseline.json` holds the known-failure list and the
+the source does not. `evals/datasets/<embedder>/baseline.json` holds the known-failure list and the
 thresholds, kept out of the dataset it gates so that regenerating the dataset
 cannot silently relax the gate.
 
@@ -684,15 +684,15 @@ this; a structural assertion did.
 ### 5.9 Make a known failure pass
 
 ```bash
-cp evals/baseline.json /tmp/baseline.bak
+cp evals/datasets/openai-text-embedding-3-small/baseline.json /tmp/baseline.bak
 python3 - <<'PY'
 import json, pathlib
-p = pathlib.Path("evals/baseline.json"); d = json.loads(p.read_text())
+p = pathlib.Path("evals/datasets/openai-text-embedding-3-small/baseline.json"); d = json.loads(p.read_text())
 d["known_failures"] = [i for i in d["known_failures"] if i != "g027"]
 p.write_text(json.dumps(d, indent=2, sort_keys=True) + "\n")
 PY
 uv run pytest evals/test_deterministic.py -q -k known
-cp /tmp/baseline.bak evals/baseline.json    # restore
+cp /tmp/baseline.bak evals/datasets/openai-text-embedding-3-small/baseline.json    # restore
 ```
 
 ```

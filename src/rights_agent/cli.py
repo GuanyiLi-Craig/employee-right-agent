@@ -10,15 +10,16 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Sequence
+from collections.abc import Sequence
 
 from rights_agent.agent import Agent, AgentAnswer
-from rights_agent.config import PRICING_AS_OF, price_for, settings as load_settings
-from rights_agent.log import configure_logging
+from rights_agent.config import PRICING_AS_OF, price_for
+from rights_agent.config import settings as load_settings
 from rights_agent.embedding import EmbedderError
+from rights_agent.entrypoints import operator_error_exit
+from rights_agent.log import configure_logging
 from rights_agent.store import IndexNotBuiltError, StoreError
 from rights_agent.telemetry import shutdown_telemetry, telemetry_status
-from rights_agent.entrypoints import operator_error_exit
 
 BAR_WIDTH = 44
 

@@ -20,23 +20,25 @@ import secrets
 import signal
 import threading
 import time
-import uuid
+from collections.abc import Iterator
 from functools import partial
 from hmac import compare_digest
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from rights_agent.agent import Agent
 from rights_agent.audit import RETENTION_FLOOR_DAYS, RetentionPolicy
 from rights_agent.config import (
-    ConfigError,
     PRICING,
     PRICING_AS_OF,
+    ConfigError,
     Settings,
     price_for,
+)
+from rights_agent.config import (
     settings as load_settings,
 )
 from rights_agent.conversation import reconstruct_turns, summarise_sessions
@@ -122,7 +124,7 @@ PROTECTED_PATHS: frozenset[str] = frozenset(
 #: not a side door around ``/api/audit``. It changes no state.
 
 #: Header the token travels in.
-TOKEN_HEADER = "X-Demo-Token"
+TOKEN_HEADER = "X-Demo-Token"  # noqa: S105 - a header name, not a secret
 
 #: Whose requests appear in the chat's history list. The traffic controls use a
 #: different actor and the eval suite uses another again, so filtering on this
@@ -207,7 +209,7 @@ class DemoService:
                     on_token=lambda chunk: events.put({"type": "token", "text": chunk}),
                 )
                 holder["answer"] = answer.to_dict()
-            except Exception as exc:  # noqa: BLE001 - reported to the client
+            except Exception as exc:
                 log.exception("streamed ask failed")
                 holder["error"] = f"{type(exc).__name__}: {exc}"
             finally:
@@ -526,7 +528,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     # ---- plumbing ---------------------------------------------------------
-    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
+    def log_message(self, fmt: str, *args: Any) -> None:
         log.debug("%s - %s", self.address_string(), fmt % args)
 
     def _security_headers(self) -> None:
@@ -606,7 +608,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         )
         return True
 
-    def do_GET(self) -> None:  # noqa: N802 - http.server's naming
+    def do_GET(self) -> None:
         path = urlparse(self.path).path
         try:
             if self._refuse_unauthorised(path):
@@ -656,14 +658,14 @@ class DemoHandler(BaseHTTPRequestHandler):
                 )
             else:
                 self._json({"error": f"no route for {path}"}, HTTPStatus.NOT_FOUND)
-        except Exception as exc:  # noqa: BLE001 - a 500 must still be JSON
+        except Exception as exc:
             log.exception("GET %s failed", path)
             self._json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def do_HEAD(self) -> None:  # noqa: N802
+    def do_HEAD(self) -> None:
         self.do_GET()
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         path = urlparse(self.path).path
         try:
             if self._refuse_unauthorised(path):
@@ -680,7 +682,13 @@ class DemoHandler(BaseHTTPRequestHandler):
                 if not question:
                     self._json({"error": "question is required"}, HTTPStatus.BAD_REQUEST)
                     return
-                session_id = str(payload.get("session_id") or "") or f"chat-{uuid.uuid4().hex[:8]}"
+                session_id = (
+                    str(payload.get("session_id") or "")
+                    # 16 bytes, matching the page's own generator. The id is the
+                    # only thing guarding a transcript, so a truncated one is a
+                    # guess away from someone else's chat.
+                    or f"chat-{secrets.token_hex(16)}"
+                )
                 self._stream_ndjson(self.service.ask_streaming(question, session_id))
             elif path == "/api/chat/reset":
                 session_id = str(payload.get("session_id") or "")
@@ -710,7 +718,7 @@ class DemoHandler(BaseHTTPRequestHandler):
                 self._json({"error": f"no route for {path}"}, HTTPStatus.NOT_FOUND)
         except ValueError as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("POST %s failed", path)
             self._json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -736,7 +744,7 @@ class DemoHandler(BaseHTTPRequestHandler):
 WARMUP_QUESTION = "What does the document say about trade union recognition?"
 
 
-def warm_up(service: "DemoService") -> str:
+def warm_up(service: DemoService) -> str:
     """Pay the first-request costs before anyone is watching.
 
     A hosted model's first call pays TLS setup and an empty prompt cache: 10.5s

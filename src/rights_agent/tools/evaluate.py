@@ -15,19 +15,21 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import mean
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 from rights_agent.agent import Agent, AgentAnswer
-from rights_agent.config import PROMPT_VERSION, Settings, settings as load_settings
+from rights_agent.config import PROMPT_VERSION, Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.datasets import require_datasets_dir
+from rights_agent.entrypoints import operator_error_exit
 from rights_agent.judges import Calibration, HeuristicJudge, Judge, JudgeScores, calibrate
 from rights_agent.log import configure_logging, get_logger
 from rights_agent.metrics import percentile
 from rights_agent.store import load_manifest
-from rights_agent.entrypoints import operator_error_exit
 
 log = get_logger("tools.evaluate")
 
@@ -90,7 +92,7 @@ class RowResult:
     model: str = ""
 
     @classmethod
-    def from_answer(cls, row: dict[str, Any], answer: AgentAnswer) -> "RowResult":
+    def from_answer(cls, row: dict[str, Any], answer: AgentAnswer) -> RowResult:
         retrieved = [str(doc.get("citation", "")) for doc in answer.docs]
         provisions = {citation.split("(")[0].strip() for citation in retrieved}
         expected = list(row.get("must_cite") or [])

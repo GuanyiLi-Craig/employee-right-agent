@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator
 
 #: Structural kinds, ordered from the root down.  ``inserted`` is a provision
 #: that this document inserts into *another* document -- it looks like a section
@@ -51,8 +51,8 @@ class Node:
     title: str = ""
     text: str = ""
     page: int = 0
-    parent: "Node | None" = field(default=None, repr=False, compare=False)
-    children: list["Node"] = field(default_factory=list, repr=False)
+    parent: Node | None = field(default=None, repr=False, compare=False)
+    children: list[Node] = field(default_factory=list, repr=False)
     #: For ``inserted`` provisions: the document they are inserted into and the
     #: section of *this* document doing the inserting.
     host_document: str = ""
@@ -73,14 +73,14 @@ class Node:
             raise ValueError(f"unknown node kind {self.kind!r}; expected one of {KINDS}")
 
     # ---- tree construction -------------------------------------------------
-    def add(self, child: "Node") -> "Node":
+    def add(self, child: Node) -> Node:
         """Attach ``child`` and return it."""
         child.parent = self
         self.children.append(child)
         return child
 
     # ---- navigation --------------------------------------------------------
-    def path(self) -> list["Node"]:
+    def path(self) -> list[Node]:
         """Root → self."""
         chain: list[Node] = []
         node: Node | None = self
@@ -93,14 +93,14 @@ class Node:
     def depth(self) -> int:
         return len(self.path()) - 1
 
-    def walk(self) -> Iterator["Node"]:
+    def walk(self) -> Iterator[Node]:
         """Depth-first, self first.  Order is deterministic, which is what makes
         document-order ordinals stable between builds."""
         yield self
         for child in self.children:
             yield from child.walk()
 
-    def ancestor(self, *kinds: str) -> "Node | None":
+    def ancestor(self, *kinds: str) -> Node | None:
         """Nearest ancestor (excluding self) of any of ``kinds``."""
         node = self.parent
         while node is not None:
@@ -109,7 +109,7 @@ class Node:
             node = node.parent
         return None
 
-    def enclosing_provision(self) -> "Node | None":
+    def enclosing_provision(self) -> Node | None:
         """The section or inserted provision this node belongs to.
 
         Returns ``self`` when the node *is* the provision.
@@ -191,7 +191,7 @@ class Node:
             return f"Sch. {schedule.number} para. {provision.number}{suffix}"
         return f"s.{provision.number}{suffix}"
 
-    def _subsection_chain(self) -> list["Node"]:
+    def _subsection_chain(self) -> list[Node]:
         """Subsection nodes strictly *below* the enclosing provision.
 
         Sliced after the provision rather than filtered over the whole path: an

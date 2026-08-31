@@ -25,14 +25,16 @@ debug.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Iterator, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from rights_agent.config import Settings, settings as load_settings
+from rights_agent.config import Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.judges import HeuristicJudge, Judge
 from rights_agent.llm import LLMClient, generate
 from rights_agent.log import get_logger
@@ -181,7 +183,7 @@ class AgentDeps:
 
     @property
     def index_version(self) -> str:
-        assert self.retriever is not None
+        assert self.retriever is not None  # noqa: S101 - narrowing for the type checker
         return self.retriever.index_version
 
 
@@ -216,7 +218,7 @@ def _node_classify(deps: AgentDeps):
 
 def _node_retrieve(deps: AgentDeps):
     def retrieve(state: AgentState) -> dict[str, Any]:
-        assert deps.retriever is not None
+        assert deps.retriever is not None  # noqa: S101 - narrowing for the type checker
         updates: dict[str, Any] = {}
         with _timed("retrieve", updates):
             query = state.get("rewritten_query") or state["question"]

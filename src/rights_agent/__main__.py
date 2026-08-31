@@ -7,7 +7,7 @@ reads as a list of jobs rather than a list of module paths.
 from __future__ import annotations
 
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 COMMANDS: dict[str, str] = {
     "ask": "rights_agent.cli:ask",

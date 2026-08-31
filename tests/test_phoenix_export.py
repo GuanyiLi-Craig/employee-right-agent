@@ -118,7 +118,7 @@ def test_every_example_is_nested_not_flat(golden_rows) -> None:
 def test_expected_citations_travel_with_the_example(golden_rows) -> None:
     examples = build_examples(golden_rows, "v1")
     answerable = [
-        e for e, r in zip(examples, golden_rows)
+        e for e, r in zip(examples, golden_rows, strict=True)
         if r.get("must_cite") and not r.get("should_refuse")
     ]
     assert answerable

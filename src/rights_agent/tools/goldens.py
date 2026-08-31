@@ -1,4 +1,4 @@
-"""Generate ``evals/golden.jsonl`` and ``evals/calibration.jsonl``.
+"""Generate the per-embedder ``golden.jsonl`` and ``calibration.jsonl``.
 
     uv run python -m rights_agent goldens
 
@@ -28,17 +28,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
-from rights_agent.config import Settings, settings as load_settings
+from rights_agent.config import Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.document.nodes import KIND_PART, KIND_SECTION, Node
 from rights_agent.document.parser import parse_corpus
+from rights_agent.entrypoints import operator_error_exit
 from rights_agent.graph import classify_intent
 from rights_agent.log import configure_logging, get_logger
 from rights_agent.retrieval import Retriever, format_context, sufficiency
-from rights_agent.entrypoints import operator_error_exit
 
 log = get_logger("tools.goldens")
 
@@ -176,7 +178,7 @@ def build_golden_rows(settings: Settings, retriever: Retriever) -> list[GoldenRo
     rows: list[GoldenRow] = []
     index = 0
     for part_label in sorted(grouped):
-        for position, section in enumerate(_spread(grouped[part_label], QUESTIONS_PER_PART)):
+        for _position, section in enumerate(_spread(grouped[part_label], QUESTIONS_PER_PART)):
             template = TEMPLATES[(index) % len(TEMPLATES)]
             question = template.format(number=section.number, subject=subject_of(section))
             citation = section.citation()
@@ -527,7 +529,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--write-baseline",
         action="store_true",
-        help="also rewrite evals/baseline.json known_failures (a deliberate act)",
+        help="also rewrite the baseline's known_failures (a deliberate act)",
     )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)

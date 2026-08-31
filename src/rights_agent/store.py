@@ -14,9 +14,10 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import chromadb
 from chromadb.api.models.Collection import Collection
@@ -67,7 +68,7 @@ def chroma_client(settings: Settings) -> chromadb.ClientAPI:
                 path=str(settings.chroma_dir),
                 settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
             )
-        except Exception as exc:  # noqa: BLE001 - re-raised with the actionable hint
+        except Exception as exc:
             raise StoreError(
                 f"could not open the Chroma index at {settings.chroma_dir}: {exc}. "
                 "Chroma stores its index in SQLite, which fails on some network and "
@@ -100,7 +101,7 @@ def create_collection(
     try:
         client.delete_collection(name)
         log.debug("dropped existing collection %s", name)
-    except Exception:  # noqa: BLE001 - "does not exist" is the normal case
+    except Exception:  # noqa: BLE001, S110 - "does not exist" is the normal case
         pass
     return client.create_collection(
         name=name,
@@ -180,7 +181,7 @@ def flatten_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | 
     for key, value in metadata.items():
         if value is None:
             continue
-        if isinstance(value, bool) or isinstance(value, (int, float, str)):
+        if isinstance(value, (bool, int, float, str)):
             out[key] = value
         elif isinstance(value, (list, tuple, set)):
             out[key] = json.dumps(sorted(str(item) for item in value), ensure_ascii=False)

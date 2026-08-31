@@ -18,7 +18,9 @@ info:
     chose proves nothing, which is what the first version of this template did.
   remediation: |
     Mint session ids from a CSPRNG with at least 128 bits
-    (`crypto.getRandomValues`), and never from a timestamp.
+    (`crypto.getRandomValues`), and never from a timestamp. The server mints
+    ids too, whenever a client does not supply one, and those fallbacks need
+    the same entropy: `secrets.token_hex(16)`, not a truncated uuid4.
   tags: rights-agent,idor,entropy
 http:
   - method: GET
@@ -27,6 +29,8 @@ http:
       - "{{BaseURL}}/api/chat/history?session_id=incident-1787928581"
       - "{{BaseURL}}/api/chat/history?session_id=chat-a1b2c3d4"
       - "{{BaseURL}}/api/chat/history?session_id=chat-00000000"
+      - "{{BaseURL}}/api/chat/history?session_id=sess-a1b2c3d4"
+      - "{{BaseURL}}/api/chat/history?session_id=sess-00000000"
       - "{{BaseURL}}/api/chat/history?session_id=warm"
       - "{{BaseURL}}/api/chat/history?session_id=demo"
     stop-at-first-match: true

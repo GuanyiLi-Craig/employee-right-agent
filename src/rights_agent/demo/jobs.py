@@ -14,9 +14,10 @@ import random
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rights_agent.agent import Agent
 from rights_agent.analysis import drift_report
@@ -136,7 +137,7 @@ class JobRunner:
         try:
             text = self.jobs[name](params)
             ok = True
-        except Exception as exc:  # noqa: BLE001 - the output panel is where this belongs
+        except Exception as exc:
             ok = False
             text = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=6)}"
             log.exception("job %s failed", name)
@@ -198,7 +199,8 @@ class JobRunner:
         # questions.  If the question mix moved too, a drift report cannot tell
         # whether the model changed or the traffic did -- which is the confound
         # the "shift intents" control exists to demonstrate deliberately.
-        chooser = random.Random(1234)
+        # Seeded on purpose: synthetic demo traffic has to be reproducible.
+        chooser = random.Random(1234)  # noqa: S311 - not used for anything security-bearing
         selection = [chooser.choice(questions) for _ in range(count)]
         report = self._progress(label)
 
@@ -357,7 +359,7 @@ class JobRunner:
             from rights_agent.graph import AgentDeps
 
             settings = self.settings.with_overrides(model=GATE_MODEL)
-            assert self.agent.deps.retriever is not None
+            assert self.agent.deps.retriever is not None  # noqa: S101 - narrowing for the type checker
             self._gate = Agent(
                 settings,
                 deps=AgentDeps(settings=settings, retriever=self.agent.deps.retriever),

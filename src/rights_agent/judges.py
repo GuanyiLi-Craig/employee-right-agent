@@ -27,14 +27,18 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from statistics import mean
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Protocol
 
-from rights_agent.config import Settings, settings as load_settings
+from rights_agent.config import Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.document.nodes import citation_resolves
 from rights_agent.llm import (
     CITATION_RE as _CITATION_RE,
+)
+from rights_agent.llm import (
     extract_citations,
     make_client,
     parse_context,
@@ -52,16 +56,7 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 #: Words that carry no evidential weight when checking whether a sentence is
 #: supported by the context.
 _FILLER = frozenset(
-    """
-    a about above after all also an and any are as at be been being between but
-    by can cannot could did do does doing done during each either else for from
-    further had has have having he her him his how however if in into is it its
-    itself may means might must no nor not of on only or other our out over own
-    provides same shall she should so some such than that the their them then
-    there these they this those through to under until up upon was we were what
-    when where whether which while who whom whose will with within without would
-    you your
-    """.split()
+    ["a", "about", "above", "after", "all", "also", "an", "and", "any", "are", "as", "at", "be", "been", "being", "between", "but", "by", "can", "cannot", "could", "did", "do", "does", "doing", "done", "during", "each", "either", "else", "for", "from", "further", "had", "has", "have", "having", "he", "her", "him", "his", "how", "however", "if", "in", "into", "is", "it", "its", "itself", "may", "means", "might", "must", "no", "nor", "not", "of", "on", "only", "or", "other", "our", "out", "over", "own", "provides", "same", "shall", "she", "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "those", "through", "to", "under", "until", "up", "upon", "was", "we", "were", "what", "when", "where", "whether", "which", "while", "who", "whom", "whose", "will", "with", "within", "without", "would", "you", "your"]
 )
 
 #: A sentence counts as grounded when this fraction of its content words appears
@@ -350,7 +345,7 @@ def cohens_kappa(human: Sequence[int], machine: Sequence[int]) -> float:
     total = len(human)
     if total == 0:
         return 0.0
-    observed = sum(1 for h, m in zip(human, machine) if h == m) / total
+    observed = sum(1 for h, m in zip(human, machine, strict=True) if h == m) / total
     expected = 0.0
     for label in (0, 1):
         p_human = sum(1 for h in human if h == label) / total
@@ -422,7 +417,7 @@ def calibrate(
             )
 
     agreement = (
-        sum(1 for h, m in zip(human, machine) if h == m) / len(human) if human else 0.0
+        sum(1 for h, m in zip(human, machine, strict=True) if h == m) / len(human) if human else 0.0
     )
     return Calibration(
         judge=getattr(judge, "name", "unknown"),

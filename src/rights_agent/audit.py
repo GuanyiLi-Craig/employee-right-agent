@@ -45,9 +45,11 @@ import json
 import os
 import re
 import threading
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from rights_agent.log import get_logger
 
@@ -186,7 +188,7 @@ class AuditRecord:
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def sealed(self) -> "AuditRecord":
+    def sealed(self) -> AuditRecord:
         return replace(self, record_hash=self.compute_hash())
 
     def to_json(self) -> str:
@@ -270,7 +272,7 @@ def verify_records(rows: Sequence[dict[str, Any]]) -> ChainVerification:
                 records=len(rows),
                 verified=verified,
                 broken_at=index,
-                reason=f"previous_hash does not match the record before it",
+                reason="previous_hash does not match the record before it",
             )
         recomputed = record.compute_hash()
         if recomputed != stored_hash:
@@ -494,15 +496,15 @@ def expired(
     Reported rather than acted on: deleting audit records is a decision with a
     legal basis attached, not a background job.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     def parse(value: str) -> Any:
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return datetime.fromisoformat(value)
         except ValueError:
             return None
 
-    reference = parse(now_iso) or datetime.now(timezone.utc)
+    reference = parse(now_iso) or datetime.now(UTC)
     cutoff = reference - timedelta(days=policy.configured_days)
     out: list[int] = []
     for row in rows:

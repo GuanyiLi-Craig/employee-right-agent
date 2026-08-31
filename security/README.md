@@ -107,8 +107,7 @@ is not asserted is a control that comes back off in the next refactor.
 - **The corpus is trusted.** Retrieved text goes into the prompt, so a corpus an
   attacker can write to is an indirect prompt-injection channel. Here the corpus
   is committed to the repository and the index is built by a separate job, so the
-  trust boundary is the repository. That assumption is exactly what
-  [session 6](../presentation/) is about.
+  trust boundary is the repository.
 - **`/api/chunks` is unauthenticated, on purpose.** The index panel reads the
   embedded corpus — public UK legislation, already returned verbatim in every
   answer's "retrieved provisions" detail — plus each chunk's metadata and its

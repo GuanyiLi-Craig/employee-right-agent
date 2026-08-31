@@ -29,8 +29,9 @@ the contrast is worth naming out loud rather than hiding.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from rights_agent.config import (
     INFRA_USD_PER_REQUEST,
@@ -230,7 +231,7 @@ def breakdown(
 
 def aggregate(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
     """Sum the component breakdowns already recorded on metrics rows."""
-    totals: dict[str, float] = {name: 0.0 for name in COMPONENTS}
+    totals: dict[str, float] = dict.fromkeys(COMPONENTS, 0.0)
     for row in rows:
         for name, value in (row.get("cost_components") or {}).items():
             if name in totals:

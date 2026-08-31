@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -50,7 +51,7 @@ def test_the_first_record_links_to_genesis(log: AuditLog) -> None:
 
 def test_each_record_links_to_the_one_before(log: AuditLog) -> None:
     rows = log.read()
-    for earlier, later in zip(rows, rows[1:]):
+    for earlier, later in pairwise(rows):
         assert later["previous_hash"] == earlier["record_hash"]
         assert later["sequence"] == earlier["sequence"] + 1
 

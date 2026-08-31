@@ -24,9 +24,10 @@ a corpus that moved.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from statistics import mean
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from rights_agent.config import PRICING, PRICING_AS_OF, cost_usd, price_for
 from rights_agent.metrics import percentile

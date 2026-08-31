@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from rights_agent.config import CHUNK_CHARS, OVERLAP_CHARS
-from rights_agent.document.nodes import KIND_INSERTED, leaves as tree_leaves
+from rights_agent.document.nodes import KIND_INSERTED
+from rights_agent.document.nodes import leaves as tree_leaves
 from rights_agent.document.parser import parse_text
 from rights_agent.pipelines.hierarchical import build_rows
 from rights_agent.pipelines.simple import fixed_window_chunks
@@ -63,7 +64,7 @@ def rows(corpus_text: str):
 def test_every_leaf_document_starts_with_its_breadcrumb(rows) -> None:
     """The breadcrumb IS the embedded text, not metadata stored beside it."""
     leaves, _ = rows
-    for document, metadata in zip(leaves["documents"], leaves["metadatas"]):
+    for document, metadata in zip(leaves["documents"], leaves["metadatas"], strict=True):
         assert document.startswith(metadata["breadcrumb"])
         assert document != metadata["breadcrumb"], "the leaf text is missing"
 
@@ -112,7 +113,7 @@ def test_every_leaf_points_at_a_parent_row(rows) -> None:
 
 def test_parent_rows_contain_their_childrens_text(rows) -> None:
     leaves, parents = rows
-    by_id = dict(zip(parents["ids"], parents["metadatas"]))
+    by_id = dict(zip(parents["ids"], parents["metadatas"], strict=True))
     sample = leaves["metadatas"][100]
     parent = by_id[sample["parent_id"]]
     assert sample["raw_text"].strip("() 0123456789")[:40] in parent["raw_text"]

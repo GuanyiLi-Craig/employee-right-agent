@@ -180,7 +180,7 @@ def test_aggregate_sums_recorded_component_breakdowns() -> None:
 
 
 def test_aggregate_of_nothing_is_zero_not_missing() -> None:
-    assert aggregate([]) == {name: 0.0 for name in COMPONENTS}
+    assert aggregate([]) == dict.fromkeys(COMPONENTS, 0.0)
 
 
 # --------------------------------------------------------------------------- #

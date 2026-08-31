@@ -23,7 +23,7 @@ class _Response:
     def read(self) -> bytes:
         return self._payload
 
-    def __enter__(self) -> "_Response":
+    def __enter__(self) -> _Response:
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -35,7 +35,7 @@ def captured(monkeypatch):
     """Capture the request instead of sending it."""
     sent: dict[str, Any] = {}
 
-    def fake_urlopen(request, timeout=None):  # noqa: ANN001
+    def fake_urlopen(request, timeout=None):
         sent["url"] = request.full_url
         sent["body"] = json.loads(request.data)
         sent["headers"] = dict(request.headers)
@@ -123,7 +123,7 @@ def test_the_routing_decision_is_annotated_next_to_the_score(
 def test_a_rejected_annotation_is_logged_not_raised(monkeypatch, isolated_settings) -> None:
     """Observability must never take down the thing it observes."""
 
-    def reject(request, timeout=None):  # noqa: ANN001
+    def reject(request, timeout=None):
         raise urllib.error.HTTPError(request.full_url, 422, "Unprocessable", {}, None)
 
     monkeypatch.setattr("urllib.request.urlopen", reject)
@@ -131,7 +131,7 @@ def test_a_rejected_annotation_is_logged_not_raised(monkeypatch, isolated_settin
 
 
 def test_an_unreachable_collector_is_not_an_error(monkeypatch, isolated_settings) -> None:
-    def explode(request, timeout=None):  # noqa: ANN001
+    def explode(request, timeout=None):
         raise OSError("connection refused")
 
     monkeypatch.setattr("urllib.request.urlopen", explode)
@@ -151,7 +151,7 @@ def test_a_span_not_yet_exported_is_retried_not_dropped(monkeypatch, isolated_se
 
     calls = {"n": 0}
 
-    def not_yet(request, timeout=None):  # noqa: ANN001
+    def not_yet(request, timeout=None):
         calls["n"] += 1
         if calls["n"] < 3:
             raise urllib.error.HTTPError(
@@ -176,7 +176,7 @@ def test_a_real_rejection_is_not_retried(monkeypatch, isolated_settings) -> None
 
     calls = {"n": 0}
 
-    def rejected(request, timeout=None):  # noqa: ANN001
+    def rejected(request, timeout=None):
         calls["n"] += 1
         raise urllib.error.HTTPError(request.full_url, 422, "Bad", {}, None)
 
@@ -196,7 +196,7 @@ def test_annotating_never_blocks_the_answer(monkeypatch, isolated_settings) -> N
 
     from rights_agent import annotations as module
 
-    def slow(request, timeout=None):  # noqa: ANN001
+    def slow(request, timeout=None):
         real_time.sleep(0.4)
         return _Response({"data": [{"id": "x"}]})
 

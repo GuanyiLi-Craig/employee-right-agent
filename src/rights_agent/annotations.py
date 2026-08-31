@@ -29,8 +29,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from rights_agent.config import Settings
 from rights_agent.log import get_logger

@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import functools
 import sys
-from typing import Callable, Sequence, TypeVar
+from collections.abc import Callable, Sequence
+from typing import TypeVar
 
 from rights_agent.audit import AuditError
 from rights_agent.config import ConfigError

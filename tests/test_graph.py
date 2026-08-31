@@ -151,8 +151,8 @@ def test_every_key_a_node_writes_is_declared_in_the_state() -> None:
     written = set(re.findall(r'updates\[\s*"([a-z_]+)"\s*\]\s*=', source))
     written |= {
         key
-        for group in re.findall(r"updates\.update\(([^)]*)\)", source, re.S)
-        for key in re.findall(r"^\s*([a-z_]+)\s*=", group, re.M)
+        for group in re.findall(r"updates\.update\(([^)]*)\)", source, re.DOTALL)
+        for key in re.findall(r"^\s*([a-z_]+)\s*=", group, re.MULTILINE)
     }
     declared = set(AgentState.__annotations__)
     assert written <= declared, f"nodes write keys the state does not declare: {sorted(written - declared)}"

@@ -34,7 +34,9 @@ import os
 import re
 import time
 from collections import Counter
-from typing import Any, Sequence
+from collections.abc import Sequence
+from itertools import pairwise
+from typing import Any
 
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
 from chromadb.utils.embedding_functions import register_embedding_function
@@ -83,11 +85,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9£][a-z0-9£'\-]*")
 #: legal text ("no", "not", "must", "may"), so this one is deliberately short
 #: and keeps every modal verb.
 STOPWORDS = frozenset(
-    """
-    a an and are as at be been being by for from had has have he her his if in
-    into is it its of on or our ours she that the their them there these they
-    this those to was were which who whom whose will with would you your
-    """.split()
+    ["a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "for", "from", "had", "has", "have", "he", "her", "his", "if", "in", "into", "is", "it", "its", "of", "on", "or", "our", "ours", "she", "that", "the", "their", "them", "there", "these", "they", "this", "those", "to", "was", "were", "which", "who", "whom", "whose", "will", "with", "would", "you", "your"]
 )
 
 
@@ -148,7 +146,7 @@ class HashingEmbedder(EmbeddingFunction[Documents]):
         return {"dim": self.dim}
 
     @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "HashingEmbedder":
+    def build_from_config(config: dict[str, Any]) -> HashingEmbedder:
         return HashingEmbedder(dim=int(config.get("dim", HashingEmbedder.DIM)))
 
     def validate_config(self, config: dict[str, Any]) -> None:
@@ -168,7 +166,7 @@ class HashingEmbedder(EmbeddingFunction[Documents]):
     def _embed_one(self, text: str) -> list[float]:
         tokens = tokenize(text)
         counts: Counter[str] = Counter(tokens)
-        counts.update(f"{a}_{b}" for a, b in zip(tokens, tokens[1:]))
+        counts.update(f"{a}_{b}" for a, b in pairwise(tokens))
         vector = [0.0] * self.dim
         for term, count in counts.items():
             vector[_bucket(term, self.dim)] += 1.0 + math.log(count)
@@ -214,7 +212,7 @@ class OnnxMiniLMEmbedder(EmbeddingFunction[Documents]):
             # Force the model download/verification now, so a network failure
             # surfaces here rather than half way through an ingest.
             self._inner(["warmup"])
-        except Exception as exc:  # noqa: BLE001 - any failure means "unavailable"
+        except Exception as exc:
             raise EmbedderError(
                 f"ONNX MiniLM could not be initialised ({exc}). It downloads a model on "
                 "first use; run with RIGHTS_EMBEDDER=hashing to stay offline."
@@ -231,7 +229,7 @@ class OnnxMiniLMEmbedder(EmbeddingFunction[Documents]):
         return {}
 
     @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "OnnxMiniLMEmbedder":
+    def build_from_config(config: dict[str, Any]) -> OnnxMiniLMEmbedder:
         return OnnxMiniLMEmbedder()
 
     def validate_config(self, config: dict[str, Any]) -> None:
@@ -331,7 +329,7 @@ class OpenAIEmbedder(EmbeddingFunction[Documents]):
         return {"embedder_name": self._name}
 
     @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "OpenAIEmbedder":
+    def build_from_config(config: dict[str, Any]) -> OpenAIEmbedder:
         return OpenAIEmbedder(str(config.get("embedder_name") or OPENAI_SMALL_NAME))
 
     def validate_config(self, config: dict[str, Any]) -> None:
@@ -490,7 +488,7 @@ def assert_embedder_matches(recorded: str | None, resolved: str) -> None:
 
 def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     """Only used by tests and diagnostics; Chroma does this internally."""
-    numerator = sum(a * b for a, b in zip(left, right))
+    numerator = sum(a * b for a, b in zip(left, right, strict=True))
     left_norm = math.sqrt(sum(a * a for a in left))
     right_norm = math.sqrt(sum(b * b for b in right))
     if left_norm == 0 or right_norm == 0:

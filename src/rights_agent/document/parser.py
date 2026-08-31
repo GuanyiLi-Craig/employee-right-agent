@@ -197,8 +197,8 @@ def load_corpus_text(path: Path) -> str:
             "Alternatively point RIGHTS_CORPUS at a layout text file."
         )
     try:
-        completed = subprocess.run(
-            ["pdftotext", "-layout", str(path), "-"],
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["pdftotext", "-layout", str(path), "-"],  # noqa: S607 - resolved from PATH by design
             check=True,
             capture_output=True,
             timeout=300,
@@ -398,7 +398,7 @@ def _is_cross_heading(lines: list[Line], index: int) -> bool:
 
 
 _SMALL_WORDS = frozenset(
-    "a an and as at by for from in into of on or the to with without".split()
+    ["a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "with", "without"]
 )
 
 
@@ -758,10 +758,14 @@ def _prune(tree: Node) -> None:
     citation that would have pointed into it.
     """
     for node in list(tree.walk()):
-        if node.kind == KIND_HEADING and not node.children and not node.text.strip():
-            if node.parent is not None:
-                node.parent.children.remove(node)
-                node.parent = None
+        if (
+            node.kind == KIND_HEADING
+            and not node.children
+            and not node.text.strip()
+            and node.parent is not None
+        ):
+            node.parent.children.remove(node)
+            node.parent = None
 
 
 # --------------------------------------------------------------------------- #

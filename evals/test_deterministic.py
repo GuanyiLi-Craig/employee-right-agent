@@ -13,19 +13,23 @@ gate.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import pytest
 
+from conftest import GoldenResult
 from rights_agent.config import LEAF_COLLECTION, PARENT_COLLECTION, SIMPLE_COLLECTION, Settings
 from rights_agent.document.nodes import (
     KIND_INSERTED,
     KIND_SUBSECTION,
     Node,
     citation_resolves,
-    leaves as tree_leaves,
     stats,
+)
+from rights_agent.document.nodes import (
+    leaves as tree_leaves,
 )
 from rights_agent.document.parser import TreeExpectations, validate_tree
 from rights_agent.embedding import EmbedderError, HashingEmbedder, assert_embedder_matches
@@ -38,8 +42,6 @@ from rights_agent.store import (
     collection_count,
     open_collection,
 )
-
-from conftest import GoldenResult
 
 
 # --------------------------------------------------------------------------- #
@@ -59,7 +61,7 @@ def test_the_golden_set_was_generated_for_this_index(
     """
     stamp = baseline.get("generated_for")
     assert stamp, (
-        "evals/baseline.json has no 'generated_for' stamp: regenerate the "
+        "the baseline has no 'generated_for' stamp: regenerate the "
         "datasets with `python -m rights_agent goldens --write-baseline` so the "
         "gate can tell which index they belong to"
     )
@@ -197,7 +199,7 @@ def test_every_leaf_embeds_its_breadcrumb_first(settings: Settings) -> None:
     collection = client.get_collection(LEAF_COLLECTION)
     sample = collection.get(limit=200, include=["documents", "metadatas"])
     assert sample["documents"]
-    for document, metadata in zip(sample["documents"], sample["metadatas"]):
+    for document, metadata in zip(sample["documents"], sample["metadatas"], strict=True):
         breadcrumb = str(metadata["breadcrumb"])
         assert document.startswith(breadcrumb), (
             f"embedded text for {metadata['citation']} does not start with its breadcrumb"
@@ -355,7 +357,7 @@ def test_every_answer_cites_or_refuses(golden_results: Sequence[GoldenResult]) -
         ]
         if unresolvable:
             failures.append(f"{result.id}: cited material not in its context: {unresolvable}")
-    assert not failures, "\n  ".join(["uncited or misattributed answers:"] + failures)
+    assert not failures, "\n  ".join(["uncited or misattributed answers:", *failures])
 
 
 def test_known_failures_have_not_grown(
@@ -1152,7 +1154,7 @@ def test_the_token_gates_exactly_the_dangerous_endpoints(
     from rights_agent.demo.app import PROTECTED_PATHS
 
     service = _service(settings.with_overrides(demo_token="s3cret"), tmp_path)
-    assert PROTECTED_PATHS == {"/api/job", "/api/degraded", "/api/chat/reset", "/api/audit"}
+    assert {"/api/job", "/api/degraded", "/api/chat/reset", "/api/audit"} == PROTECTED_PATHS
     for path in PROTECTED_PATHS:
         assert not service.authorised(path, ""), f"{path} accepted an empty token"
         assert not service.authorised(path, "wrong"), f"{path} accepted a wrong token"

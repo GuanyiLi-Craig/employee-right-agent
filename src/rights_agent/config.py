@@ -418,7 +418,7 @@ class Settings:
 
     # ---- construction ------------------------------------------------------
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         data_dir = _env_path("RIGHTS_DATA_DIR", "./data")
         runs_dir = _env_path("RIGHTS_RUNS_DIR", "./runs")
         corpus = _raw("RIGHTS_CORPUS", "")
@@ -507,7 +507,7 @@ class Settings:
                 "in other applicable law."
             )
 
-    def with_overrides(self, **kwargs: object) -> "Settings":
+    def with_overrides(self, **kwargs: object) -> Settings:
         """Return a copy with fields replaced (used by the CLI and by tests)."""
         updated = replace(self, **kwargs)  # type: ignore[arg-type]
         updated.validate()

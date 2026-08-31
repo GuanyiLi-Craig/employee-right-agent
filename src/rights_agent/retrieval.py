@@ -17,11 +17,13 @@ Three failure modes are designed against here, because each one is silent:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from statistics import mean
-from typing import Any, Mapping, Sequence
+from typing import Any
 
-from rights_agent.config import LEAF_COLLECTION, PARENT_COLLECTION, Settings, settings as load_settings
+from rights_agent.config import LEAF_COLLECTION, PARENT_COLLECTION, Settings
+from rights_agent.config import settings as load_settings
 from rights_agent.embedding import assert_embedder_matches
 from rights_agent.log import get_logger
 from rights_agent.store import (
@@ -47,20 +49,7 @@ COVERAGE_WEIGHT = 0.65
 #: question carried terms that no provision can ever match, which drags
 #: coverage down uniformly and makes the threshold meaningless.
 GENERIC_TERMS = frozenset(
-    """
-    about above according act acts after against already although another
-    anything around because before being below between cannot could cover
-    covered covers different does doing document documents during either enough
-    entitled every explain from further generally happen having however itself
-    least legal legally maybe mention mentioned mentions means might much must
-    never nothing often other others outside please provide provided provides
-    provision provisions purposes rather really regarding relation require
-    required requirement requires rights said say says section sections should
-    simply since something specific state stated states statute still such
-    summarise summarize their there these thing things those through under
-    unless until using various very what whatever when where whether which
-    while whose within without would
-    """.split()
+    ["about", "above", "according", "act", "acts", "after", "against", "already", "although", "another", "anything", "around", "because", "before", "being", "below", "between", "cannot", "could", "cover", "covered", "covers", "different", "does", "doing", "document", "documents", "during", "either", "enough", "entitled", "every", "explain", "from", "further", "generally", "happen", "having", "however", "itself", "least", "legal", "legally", "maybe", "mention", "mentioned", "mentions", "means", "might", "much", "must", "never", "nothing", "often", "other", "others", "outside", "please", "provide", "provided", "provides", "provision", "provisions", "purposes", "rather", "really", "regarding", "relation", "require", "required", "requirement", "requires", "rights", "said", "say", "says", "section", "sections", "should", "simply", "since", "something", "specific", "state", "stated", "states", "statute", "still", "such", "summarise", "summarize", "their", "there", "these", "thing", "things", "those", "through", "under", "unless", "until", "using", "various", "very", "what", "whatever", "when", "where", "whether", "which", "while", "whose", "within", "without", "would"]
 )
 
 _WORD_RE = re.compile(r"[a-z0-9£][a-z0-9£'\-]*")
@@ -117,7 +106,7 @@ class Doc:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "Doc":
+    def from_dict(cls, payload: Mapping[str, Any]) -> Doc:
         return cls(
             id=str(payload.get("id", "")),
             citation=str(payload.get("citation", "")),

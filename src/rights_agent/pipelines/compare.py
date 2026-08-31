@@ -13,15 +13,16 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 from rights_agent.config import SIMPLE_COLLECTION, Settings
+from rights_agent.entrypoints import operator_error_exit
 from rights_agent.log import get_logger
 from rights_agent.pipelines.common import build_parser, settings_from_args
 from rights_agent.retrieval import Retriever
 from rights_agent.store import IndexNotBuiltError, chroma_client, open_collection
-from rights_agent.entrypoints import operator_error_exit
 
 log = get_logger("pipelines.compare")
 

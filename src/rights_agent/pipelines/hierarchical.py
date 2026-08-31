@@ -41,7 +41,11 @@ from rights_agent.document.nodes import (
     KIND_PART,
     KIND_SCHEDULE,
     Node,
+)
+from rights_agent.document.nodes import (
     leaves as tree_leaves,
+)
+from rights_agent.document.nodes import (
     provisions as tree_provisions,
 )
 from rights_agent.document.parser import (
@@ -50,9 +54,9 @@ from rights_agent.document.parser import (
     parse_corpus,
     validate_tree,
 )
+from rights_agent.entrypoints import operator_error_exit
 from rights_agent.log import get_logger
 from rights_agent.pipelines.common import build_parser, resolve_embedder, settings_from_args
-from rights_agent.entrypoints import operator_error_exit
 from rights_agent.store import (
     IndexManifest,
     add_in_batches,

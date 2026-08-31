@@ -9,8 +9,8 @@ import pytest
 from rights_agent.document.nodes import (
     KIND_HEADING,
     KIND_INSERTED,
-    KIND_SCHEDULE,
     KIND_PART,
+    KIND_SCHEDULE,
     KIND_SECTION,
     KIND_SUBSECTION,
     leaves,

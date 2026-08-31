@@ -18,7 +18,7 @@ RIGHTS_CORPUS=/app/data/ukpga_20250036_en.pdf     # the real Act (set in .env)
 Docker image, which is why ingest runs there.
 
 The eval datasets are a function of the corpus — expected citations name
-provisions, and a provision exists in exactly one document. `evals/baseline.json`
+provisions, and a provision exists in exactly one document. `evals/datasets/<embedder>/baseline.json`
 records which corpus it was generated for, and the gate refuses to run against
 another one rather than reporting twenty citation failures that look like a
 retrieval regression. After switching corpus:
@@ -89,5 +89,5 @@ the new citation shapes broke the *measurement*: `[Sch. 12 para. 4(2)]` ends two
 abbreviations in a full stop and a space, which is what the judge's sentence
 splitter looked for, and the citation recogniser capped marks at 80 characters
 against a corpus whose longest citation is 97. Citation coverage read 0.78 while
-every sentence was correctly cited. See `evals/baseline.json`
+every sentence was correctly cited. See `evals/datasets/<embedder>/baseline.json`
 (`observed_when_set`) for the measurements behind each threshold.

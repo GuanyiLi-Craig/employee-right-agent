@@ -19,10 +19,11 @@ from __future__ import annotations
 import json
 import math
 import threading
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import mean
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from rights_agent.config import PRICING_AS_OF, Settings
 from rights_agent.log import get_logger

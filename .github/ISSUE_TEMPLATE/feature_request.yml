@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest something this project should do that it does not.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth knowing before you write: multi-tenant auth, a production web front
+        end, fine-tuning, distributed serving, agent tool-calling and any cloud
+        dependency are **explicitly out of scope**. That is not a judgement about
+        whether they are good ideas — the project is scoped to what it can
+        demonstrate honestly on a laptop with no network.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you unable to do, or unable to find out, today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How would we know it worked
+      description: >
+        This codebase gates on evidence. What would you assert, and in which
+        suite — a structural claim in `test_deterministic.py`, or an aggregate in
+        `test_quality.py`?
+    validations:
+      required: false

@@ -1,0 +1,12 @@
+{
+  "name": "employment-rights-agent-uitest",
+  "private": true,
+  "description": "Browser-driven validation of the dashboard: drives the real UI and asserts on what is on screen.",
+  "type": "module",
+  "scripts": {
+    "chat": "node demo.mjs",
+    "controls": "node demo2.mjs",
+    "all": "node demo.mjs && node demo2.mjs"
+  },
+  "devDependencies": { "playwright": "1.62.1" }
+}

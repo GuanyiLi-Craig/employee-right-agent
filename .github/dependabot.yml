@@ -1,0 +1,35 @@
+version: 2
+updates:
+  # The runtime dependencies are pinned exactly (chromadb, langgraph) because a
+  # minor bump can move retrieval results and therefore the eval gate. Grouping
+  # them into one weekly PR keeps that review in one place.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+
+  # The browser tests are a separate npm project.
+  - package-ecosystem: "npm"
+    directory: "/uitest"
+    schedule:
+      interval: "monthly"
+    groups:
+      uitest:
+        patterns: ["*"]

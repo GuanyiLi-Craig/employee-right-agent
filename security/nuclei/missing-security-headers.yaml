@@ -1,0 +1,29 @@
+id: rights-agent-missing-security-headers
+info:
+  name: Dashboard responses carry no security headers
+  author: employment-rights-agent
+  severity: low
+  description: |
+    The dashboard page is served with no Content-Security-Policy, no
+    X-Content-Type-Options, no X-Frame-Options and no Referrer-Policy. The page
+    has no user auth to steal and loads no third-party script, so the practical
+    impact is small — but framing and MIME sniffing are both available for free,
+    and the headers cost one line each.
+  remediation: Send CSP, X-Content-Type-Options, X-Frame-Options and Referrer-Policy on every response.
+  tags: rights-agent,headers,misconfig
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: header
+        words:
+          - "Content-Security-Policy"
+          - "X-Content-Type-Options"
+          - "X-Frame-Options"
+        condition: or
+        negative: true

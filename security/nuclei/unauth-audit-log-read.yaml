@@ -1,0 +1,33 @@
+id: rights-agent-unauth-audit-log-read
+info:
+  name: Hash-chained audit log readable without authentication
+  author: employment-rights-agent
+  severity: high
+  description: |
+    GET /api/audit returns audit records: the (redacted) question, the actor,
+    tenant, lawful basis, citations, cost, and the chain hashes.
+
+    Redaction at capture limits the damage but does not remove it: the records
+    still reveal who asked what, when, and about which provision. The project's
+    own slide 15 says the store that makes the system explainable becomes one of
+    the most sensitive stores you operate — so serving it unauthenticated on a
+    published port contradicts its own design note.
+  remediation: |
+    Require RIGHTS_DEMO_TOKEN for /api/audit, and publish the dashboard on
+    127.0.0.1 rather than 0.0.0.0.
+  tags: rights-agent,auth,exposure,pii
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/audit?limit=1"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        condition: and
+        words:
+          - '"record_hash"'
+          - '"lawful_basis"'
+          - '"question"'

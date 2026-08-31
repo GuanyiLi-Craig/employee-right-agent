@@ -1,0 +1,17 @@
+# Build context hygiene: the image needs source, data and the lockfile. Nothing else.
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+runs
+*.log
+.env
+.env.*
+!.env.example
+CoderCo-Session5-Project-Implementation-Doc.md
+docs
+.DS_Store

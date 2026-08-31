@@ -1,0 +1,124 @@
+[project]
+name = "employee-right-agent"
+version = "0.1.0"
+description = "An observable, evaluable RAG agent: hierarchical embeddings, LangGraph, Phoenix tracing and a CI-gating eval suite."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Guanyi Li", email = "billing@binome.dev" }]
+keywords = ["rag", "llm", "observability", "evaluation", "langgraph", "phoenix", "chromadb"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "chromadb==1.5.9",
+    "langgraph==1.2.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/GuanyiLi-Craig/employee-right-agent"
+Repository = "https://github.com/GuanyiLi-Craig/employee-right-agent"
+Issues = "https://github.com/GuanyiLi-Craig/employee-right-agent/issues"
+
+[project.optional-dependencies]
+trace = [
+    "arize-phoenix-otel",
+    "arize-phoenix-client",
+    "openinference-instrumentation-langchain",
+    "openinference-semantic-conventions",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+]
+models = ["openai", "anthropic", "tiktoken"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.14"]
+
+[project.scripts]
+rights-ingest        = "rights_agent.pipelines.hierarchical:main"
+rights-ingest-simple = "rights_agent.pipelines.simple:main"
+rights-compare       = "rights_agent.pipelines.compare:main"
+rights-ask           = "rights_agent.cli:ask"
+rights-demo          = "rights_agent.demo.app:main"
+rights-corpus        = "rights_agent.tools.corpus:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rights_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "evals"]
+
+[tool.ruff.lint]
+# The `# noqa: BLE001 / A002 / S310` annotations already scattered through the
+# source were written against a ruleset that was never committed. This is that
+# ruleset. `S` earns its place in particular: the dashboard is the thing the
+# nuclei templates under security/ are pointed at.
+select = [
+    "A",    # flake8-builtins        shadowing a builtin
+    "B",    # flake8-bugbear         likely bugs
+    "BLE",  # flake8-blind-except    bare `except Exception`
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez       naive datetimes -- the audit log is dated
+    "E",    # pycodestyle errors
+    "EXE",  # flake8-executable
+    "F",    # pyflakes
+    "FURB", # refurb
+    "G",    # flake8-logging-format
+    "I",    # isort
+    "INT",  # flake8-gettext
+    "LOG",  # flake8-logging
+    "PERF", # perflint
+    "PIE",  # flake8-pie
+    "RUF",  # ruff-specific, incl. RUF100 unused-noqa
+    "S",    # flake8-bandit
+    "SIM",  # flake8-simplify
+    "SLOT",
+    "T10",  # flake8-debugger        a stray breakpoint()
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+    "YTT",  # flake8-2020
+]
+ignore = [
+    # Long lines are wrapped by hand here, and the prose comments are the point.
+    "E501",
+    # Deliberate: long report lines are split across sources inside list
+    # literals. Every occurrence is a wrap, not a missing comma.
+    "ISC004",
+    # Every occurrence is a report-formatting loop appending a wrapped f-string.
+    # `list.extend` with a generator is measurably no faster for a dozen lines
+    # and reads worse.
+    "PERF401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: `assert` is how a test asserts.
+# S105/S106: fixture tokens, and constants naming LLM *token counts*.
+# A002: `input` is Chroma's parameter name; the fakes have to match it.
+"tests/**" = ["S101", "S105", "S106", "A002"]
+"evals/**" = ["S101", "S105", "S106", "A002"]
+# The corpus is UK legislation: curly quotes and en dashes are the source text,
+# not a typo, and the parser matches on them literally.
+"src/rights_agent/document/parser.py" = ["RUF001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "evals"]
+addopts = "-ra --strict-markers"
+timeout = 600
+markers = [
+    "slow: exercises the full graph over the golden set",
+]
+filterwarnings = ["error::DeprecationWarning:rights_agent.*"]

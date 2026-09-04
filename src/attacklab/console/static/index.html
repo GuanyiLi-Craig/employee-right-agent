@@ -170,6 +170,9 @@ ul.tight li { margin-bottom: 4px; }
   <div class="dim" style="font-size:12px; margin:6px 0 8px" id="payloadNote"></div>
   <button class="primary" id="run">Run attack <kbd>R</kbd></button>
   <div class="row tight" style="margin-top:6px">
+    <button id="runDamage">Demo 1 · what it steals</button>
+  </div>
+  <div class="row tight" style="margin-top:6px">
     <button id="runPii">Demo 5 · PII question</button>
     <button id="runBenign">Benign question</button>
   </div>
@@ -535,6 +538,11 @@ document.addEventListener("click", async (ev) => {
 $("run").onclick = run;
 $("reset").onclick = async () => { LAST = null; renderState(await api("/api/reset", {})); };
 $("runScan").onclick = scan;
+$("runDamage").onclick = async () => {
+  $("verdict").innerHTML = '<div class="head dim">Running…</div>';
+  renderRun(await api("/api/damage", {}));
+  await refresh();
+};
 $("runPii").onclick = () => ask(S.pii_question);
 $("runBenign").onclick = () => ask("Must my employer notify me in writing before changing my shift?");
 $("payload").onchange = renderPayloadNote;

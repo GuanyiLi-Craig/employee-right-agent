@@ -6,7 +6,9 @@
 .DEFAULT_GOAL := help
 .PHONY: help install lint lint-fix corpus ingest ingest-simple ask compare demo goldens \
         evaluate gate calibrate test test-unit test-evals clean \
-        docker-build docker-ingest docker-up docker-down docker-evals docker-logs ui-test phoenix pentest
+        docker-build docker-ingest docker-up docker-down docker-evals docker-logs ui-test phoenix pentest \
+        fixtures poison clean-index console attack scan sandbox adversarial dataset \
+        session6 session6-check
 
 UV ?= uv
 QUESTION ?= What does the document say about bereavement leave?
@@ -103,3 +105,54 @@ phoenix: ## Upload the golden set to Phoenix and run an experiment (costs money)
 .PHONY: ui-test
 ui-test: ## Drive the dashboard in a browser and assert on what is on screen
 	cd uitest && npm install --silent && BASE=$(UI_BASE) npm run all
+
+
+# --------------------------------------------------------------------------- #
+# Session 6 — the attack lab.
+#
+# Build order is demo order, because a lab that does demos 1 and 4 reliably is
+# worth more than a complete lab that does none of them. `make session6` is the
+# whole setup; `make session6-check` proves all five demos land before the room
+# fills.
+# --------------------------------------------------------------------------- #
+
+fixtures: ## Generate the demo-3 model fixtures (same weights, two containers)
+	$(UV) run attack-fixtures
+
+poison: ## Build the poisoned index -- the corpus plus the hostile documents
+	$(UV) run attack-poison --with-poison
+
+clean-index: ## Build the clean twin, so swapping back is a pointer change
+	$(UV) run attack-poison
+
+console: ## Serve the attack console on http://127.0.0.1:8080
+	$(UV) run attack-console
+
+attack: ## Headless: run the whole catalogue and print the report
+	$(UV) run attack-report --all
+
+scan: ## Demo 3: the five supply-chain scanners
+	$(UV) run attack-scan --all
+
+sandbox: ## Run the three sandbox failure fixtures and report which limit caught each
+	$(UV) run python -c "from attacklab.sandbox.runner import FAILURE_FIXTURES as F, run_snippet as r; \
+	  [print(f'{k:44} exit={x.exit_code:3} limit={x.limit_hit or \"-\":12} {x.stdout.strip()[:60]}') \
+	   for k, v in F.items() for x in [r(v[\"code\"])]]"
+
+dataset: ## Regenerate evals/adversarial.jsonl from the catalogue
+	$(UV) run python -m attacklab.attacks.dataset
+
+adversarial: ## The session 6 gate: containment, false positives, supply chain
+	$(UV) run pytest evals/test_controls.py evals/test_falsepos.py evals/test_supplychain.py -q
+
+session6: fixtures poison clean-index ## Everything demo day needs, in one command
+	@echo
+	@echo "  assistant  -> make demo      (http://127.0.0.1:8000)"
+	@echo "  console    -> make console   (http://127.0.0.1:8080)"
+	@echo "  phoenix    -> make docker-up (http://127.0.0.1:6006)"
+	@echo
+	@echo "  Controls start ALL OFF. Run demo 1 once so you know it lands."
+	@echo "  The demo-5 PII fixture is SYNTHETIC. Never demo with real personal data."
+
+session6-check: ## Prove all five demos land, headless. Run this before the room fills.
+	$(UV) run python -m attacklab.rehearse

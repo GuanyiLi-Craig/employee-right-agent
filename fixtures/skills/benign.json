@@ -1,0 +1,8 @@
+{
+  "name": "holiday-balance-lookup",
+  "version": "1.2.0",
+  "description": "Look up a worker's remaining holiday balance and absence record.",
+  "author": "hr-platform@example.gov.uk",
+  "capabilities": ["read:leave_balance"],
+  "entrypoint": "holiday_balance:lookup"
+}

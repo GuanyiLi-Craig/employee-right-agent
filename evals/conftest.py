@@ -221,3 +221,108 @@ def answerable_results(golden_results: Sequence[GoldenResult]) -> list[GoldenRes
         for result in golden_results
         if not result.should_refuse and not result.known_failure
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Session 6 — the adversarial gate.
+#
+# Separate labs, separate artefacts, and separate skips from the session 5
+# fixtures above: hanging the adversarial suite off the golden-set fixtures
+# would make one suite's missing index look like the other suite's failure.
+# --------------------------------------------------------------------------- #
+# `evals` is not a package, and conftest.py is loaded by path with its own
+# directory on sys.path -- so this is a plain module import, not a
+# package-qualified one. `from evals.attacklab_gate import ...` fails with
+# ModuleNotFoundError.
+from attacklab_gate import MISSING_TWINS, read_thresholds  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def gate_thresholds() -> dict[str, Any]:
+    """``evals/thresholds.json``.
+
+    Thresholds are data, not code, and every one of them carries a note saying
+    where the number came from. A gate whose numbers nobody can source is a gate
+    nobody can argue with, and the first time it goes red someone loosens it
+    rather than investigating.
+    """
+    return read_thresholds()
+
+
+@pytest.fixture(scope="session")
+def lab(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
+    """A lab on the poisoned index, writing its artefacts to a temp directory.
+
+    Temp artefacts for the same reason the session 5 agent gets a temporary
+    audit log: a gate whose result depends on whether somebody ran an attack
+    this morning is not a gate.
+
+    The layer-3 judge is **left on**, and that is deliberate after getting it
+    wrong: it was disabled first, on the reasoning that a gate must not depend
+    on a provider's availability. But check 4 runs offline here -- it is priced
+    against the real price list and answered by a deterministic simulation, with
+    no network call -- so turning it off did not make the gate independent, it
+    made the gate measure a different system.
+
+    And it measured it misleadingly. ``p07``'s only container at layer 3 is
+    check 4, so with the judge off the suite reported the polite rephrase as
+    getting past layers 1 *and* 3 -- which is a real finding
+    (``test_only_the_judge_catches_the_polite_rephrase`` asserts it directly)
+    but not what ``expect_blocked_by`` describes.
+    """
+    from attacklab.attacks.corpus import twin_built
+    from attacklab.lab import Lab
+    from attacklab.registry import Registry
+    from rights_agent.config import reload_settings
+
+    # Re-read the environment first.
+    #
+    # `tests/conftest.py::isolated_settings` points RIGHTS_RUNS_DIR at a tmp
+    # directory and calls `reload_settings()` in its teardown -- which runs
+    # *before* monkeypatch restores the variable, so the process-wide cache is
+    # left holding the tmp path for the rest of the session. The unit tests run
+    # first (`testpaths = ["tests", "evals"]`), so by the time these fixtures
+    # ask where the indexes are, the answer is a directory pytest deleted.
+    #
+    # The symptom was eleven adversarial tests skipping with "the indexes have
+    # not been built" in a full run and passing when the file was run alone,
+    # which is the most misleading shape a skip can have.
+    reload_settings()
+    if not twin_built(True):
+        pytest.skip(MISSING_TWINS)
+    made = Lab(
+        Registry(),
+        poisoned=True,
+        artefacts=tmp_path_factory.mktemp("attacklab-poisoned"),
+    )
+    yield made
+    made.audit.clear()
+
+
+@pytest.fixture(scope="session")
+def clean_lab(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
+    """A lab on the clean index.  The false-positive rate is measured here.
+
+    A false-positive rate is by definition measured on inputs where nothing is
+    wrong. Measured against the poisoned index, an ordinary question about shift
+    notice retrieves the document ``p05`` lives in, the scanner correctly flags
+    it, and the suite records a false positive against a perfectly reasonable
+    question -- which is how a 4% rate reads as 100%.
+    """
+    from attacklab.attacks.corpus import twin_built
+    from attacklab.lab import Lab
+    from attacklab.registry import Registry
+    from rights_agent.config import reload_settings
+
+    # See the note in the `lab` fixture: the settings cache can be left holding
+    # a deleted tmp directory by the unit suite's teardown order.
+    reload_settings()
+    if not twin_built(False):
+        pytest.skip(MISSING_TWINS)
+    made = Lab(
+        Registry(),
+        poisoned=False,
+        artefacts=tmp_path_factory.mktemp("attacklab-clean"),
+    )
+    yield made
+    made.audit.clear()

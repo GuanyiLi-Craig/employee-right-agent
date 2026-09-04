@@ -1,0 +1,154 @@
+name: adversarial-gate
+
+# The session 6 gate. Every gate written in session 5 assumed a cooperative
+# user; this one assumes an adversary, and it runs on every push for the same
+# reason the quality gate does — a control that quietly regresses is worse than
+# one that was never written, because the panel still says it is on.
+#
+# Deliberately a separate workflow from eval.yml. The quality gate answers "does
+# this system work when everyone behaves correctly", and this one answers "does
+# it still work when someone is actively trying to make it fail". Two questions,
+# two red lights, so a reader of a failed run knows which one broke.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: adversarial-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The lab's own corpus, not the real Act. The poisoned document attaches to
+  # named provisions of the generated demonstration Act, and a payload spliced
+  # somewhere arbitrary is not retrieved by its question — so the demo shows
+  # nothing, quietly. `test_indirect_payloads_are_retrieved_on_their_merits`
+  # turns that into a legible failure if the corpus ever drifts.
+  RIGHTS_CORPUS: ""
+  # No tracing in CI: there is no collector, and a failed span export is noise
+  # in a log somebody reads when something else is wrong.
+  RIGHTS_TRACING: "false"
+  # Never a hosted model. Every payload's outcome would then depend on a
+  # provider's availability and a key's presence, which is how a green build
+  # stops meaning anything.
+  RIGHTS_MODEL: stub-local
+
+jobs:
+  supply-chain:
+    # First, and independent of everything else: the five pre-deployment
+    # scanners need no index and no model, so they fail fast and they fail
+    # cheaply. Demo 3's four beats plus the tool-surface diff.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.4"
+          enable-cache: true
+
+      - name: Sync the environment from the lockfile
+        run: uv sync --frozen --group dev
+
+      - name: Generate the model fixtures
+        # Generated, never committed: tiny.pt carries a live pickle REDUCE, and
+        # a binary with a reduce in it is exactly what a repository scanner
+        # should complain about.
+        run: uv run attack-fixtures
+
+      - name: The scanners find their fixtures
+        run: uv run pytest evals/test_supplychain.py -q
+
+      - name: The tool surface matches the reviewed allowlist
+        # The highest value-per-line check in the repository, and the one that
+        # would have caught CVE-2026-25592: about forty lines of reflection over
+        # the registry, diffed against a human-reviewed list.
+        #
+        # It is EXPECTED to fail here, because the lab ships an accidentally
+        # exposed tool as a fixture. Asserted as a failure, so the check itself
+        # cannot silently stop working.
+        run: |
+          if uv run attack-scan --all; then
+            echo "::error::the supply-chain scanners found nothing. One of them has stopped working:"
+            echo "::error::the lab ships a pickle fixture, a poisoned index, an overreaching skill"
+            echo "::error::manifest, a moved digest and an unreviewed tool, and each must be found."
+            exit 1
+          fi
+          echo "the scanners failed the build, which is what these fixtures are for"
+
+  adversarial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.4"
+          enable-cache: true
+
+      - name: Sync the environment from the lockfile
+        run: uv sync --frozen --extra trace --group dev
+
+      - name: The hook contract holds with NullHooks installed
+        # Acceptance criterion 11, and the property that makes shipping the
+        # hooks in the assistant permanently defensible: with nothing
+        # installed, every hook returns its argument unchanged.
+        run: uv run pytest tests/test_hooks.py -q
+
+      - name: The assistant's own unit tests still pass
+        # The hooks touch six modules in the assistant. If any of this moves,
+        # the lab is not worth having.
+        run: uv run pytest tests/ -q
+
+      - name: Generate the model fixtures
+        run: uv run attack-fixtures
+
+      # Rebuilt, never committed — the same argument as the quality gate's
+      # index. A prebuilt one means the suite tests a stale artefact and passes
+      # while the thing you changed is broken. The poison goes in through the
+      # assistant's unmodified pipeline: same parser, same embedder, same
+      # manifest writer.
+      - name: Build both index twins
+        run: |
+          uv run attack-poison --with-poison
+          uv run attack-poison
+
+      - name: The committed containment matrix matches the catalogue
+        run: uv run python -m attacklab.attacks.dataset --check
+
+      - name: Containment gate
+        run: uv run pytest evals/test_controls.py -q
+
+      - name: False-positive gate
+        # The other half of every block rate. A block rate without one is a
+        # marketing number.
+        run: uv run pytest evals/test_falsepos.py -q
+
+      - name: All five demos land
+        # Build order milestone 10, as a pre-flight. It is worth running in CI
+        # as well as before the room fills: a demo that stops landing is a
+        # regression nobody else's test would catch, because every control
+        # still works and the *demonstration* is what broke.
+        run: uv run python -m attacklab.rehearse
+
+      - name: Report the numbers
+        if: always()
+        # Printed rather than asserted. The thresholds are asserted above; this
+        # is the panel's own figures in the log, so a reviewer can see what
+        # moved rather than only that something did.
+        run: uv run attack-report --all --repeats 2
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: adversarial-artefacts
+          path: |
+            runs-poisoned/index_manifest.json
+            runs-clean/index_manifest.json
+            runs-poisoned/attacklab/audit.jsonl
+            runs-poisoned/attacklab/metrics.jsonl
+          if-no-files-found: warn
+          retention-days: 7

@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from statistics import mean
 from typing import Any
 
+from rights_agent import hooks
 from rights_agent.config import LEAF_COLLECTION, PARENT_COLLECTION, Settings
 from rights_agent.config import settings as load_settings
 from rights_agent.embedding import assert_embedder_matches
@@ -243,6 +244,17 @@ class Retriever:
             docs = self._to_docs(raw)
             if expand:
                 docs = self._expand(docs)[:k]
+            # Hook 2 of 7: the block list, after expansion and before assembly.
+            #
+            # Here rather than in `format_context` deliberately. The fence has
+            # to be scoped by *effect* -- "text that reached the context window
+            # from outside the request" -- not by mechanism. A block introduced
+            # by some future loader passes this point too; a hook inside the
+            # assembler would only see whatever that assembler was given.
+            offered = len(docs)
+            docs = list(hooks.HOOKS.on_context(docs))
+            if len(docs) != offered:
+                current.set_attribute("hooks.context_blocks_removed", offered - len(docs))
             current.set_attribute("retrieval.k", k)
             current.set_attribute("retrieval.pool", pool)
             current.set_attribute("retrieval.returned", len(docs))

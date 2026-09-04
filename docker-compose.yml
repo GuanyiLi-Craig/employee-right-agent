@@ -1,9 +1,15 @@
 # Employment rights agent — observable, evaluable RAG.
 #
 #   docker compose run --rm ingest        # 1. build the index (separate job)
-#   docker compose up -d                  # 2. phoenix + dashboard
+#   docker compose up -d                  # 2. phoenix + dashboard + attack console
 #   open http://localhost:8000            #    dashboard
+#   open http://localhost:8080            #    attack console (session 6)
 #   open http://localhost:6006            #    traces
+#
+# Session 6 setup, from the speaker notes:
+#
+#   docker compose run --rm ingest -- --with-poison   # corpus + the hostile document
+#   docker compose up -d                              # app, phoenix, attack panel
 #
 # The embedding pipeline is a job, not a service. It is the only writer of the
 # Chroma index, it runs to completion and exits, and the query service never
@@ -144,6 +150,73 @@ services:
       phoenix:
         condition: service_started
     restart: unless-stopped
+
+  # ------------------------------------------------------------------------ #
+  # The session 6 attack console. Reads the lab's own poisoned/clean twins;
+  # writes only its own audit chain and metrics under runs-poisoned/attacklab.
+  #
+  # A separate service from the dashboard on purpose: the audience watches the
+  # assistant on 8000 and the attacks on 8080, and the whole rhetorical premise
+  # is that those are the same system. One process serving both would make that
+  # claim unverifiable.
+  # ------------------------------------------------------------------------ #
+  console:
+    <<: *image
+    environment:
+      <<: *env
+      RIGHTS_TRACING: ${RIGHTS_TRACING:-true}
+      # Loopback inside the container would not reach the published port.
+      ATTACK_CONSOLE_HOST: 0.0.0.0
+    command: ["console", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      # Loopback only, like the dashboard: the console can run the whole
+      # catalogue and rebuild an index.
+      - "${CONSOLE_BIND:-127.0.0.1}:${CONSOLE_PORT:-8080}:8080"
+    volumes: *volumes
+    depends_on:
+      phoenix:
+        condition: service_started
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------ #
+  # Session 6 jobs. Not services: each runs to completion and exits.
+  #   docker compose run --rm scan        # demo 3, the supply-chain scanners
+  #   docker compose run --rm attack      # headless: whole catalogue + report
+  #   docker compose run --rm adversarial # the CI gate
+  # ------------------------------------------------------------------------ #
+  scan:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    command: ["scan"]
+    volumes: *volumes
+    restart: "no"
+
+  attack:
+    <<: *image
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    command: ["attack"]
+    volumes: *volumes
+    restart: "no"
+
+  adversarial:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    image: employment-rights-agent:dev
+    profiles: ["tools"]
+    environment:
+      <<: *env
+      RIGHTS_TRACING: "false"
+    command: ["adversarial", "-q"]
+    volumes: *volumes
+    restart: "no"
 
   # ------------------------------------------------------------------------ #
   # The embedding pipeline — jobs, not services.

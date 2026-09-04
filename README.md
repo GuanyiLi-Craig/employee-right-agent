@@ -588,8 +588,9 @@ that way.
 | `supplychain` | pre-deploy | yes | Five scanners. Not per-request. |
 | `rule_of_two` | design-time | **yes** | Not a filter — a reading of the configuration. |
 
-Two of the five runtime controls are deterministic. **Guardrails reduce
-probability; permissions reduce blast radius.**
+Two of the **six** per-request controls are deterministic — the tool broker
+and residency. **Guardrails reduce probability; permissions reduce blast
+radius.**
 
 ### The five demos
 
@@ -636,6 +637,13 @@ facts do, which is the session 5 discipline applied to security.
 - Combined block rate is measured over payloads that **would otherwise escape**.
   Counting a payload nothing had to stop rewards a control for containment it
   did not provide.
+- The lab lowers the assistant's sufficiency threshold from 0.45 to 0.30, and
+  [`lab.py`](src/attacklab/lab.py) explains why at length. At 0.45 that
+  *relevance* gate refused ten of the twenty payloads before any control ran,
+  which credits containment to a control never designed for it — and survives
+  exactly one more sentence of statutory vocabulary from the attacker. Every
+  indirect payload scores 0.50–0.91 and passes either threshold, so demo 1 is
+  unaffected.
 - The false-positive rate is measured against the **clean** index, on 25
   ordinary employment-law questions that deliberately contain "notify",
   "instruct", "disregard" and a mailbox in an innocent use. Measured against the

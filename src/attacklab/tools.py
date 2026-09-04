@@ -250,8 +250,15 @@ def extract_tool_calls(text: str) -> list[tuple[str, dict[str, str]]]:
 
 
 def strip_tool_calls(text: str) -> str:
-    """The answer as a person should read it, with the markers removed."""
-    return TOOL_CALL_RE.sub("", text or "").replace("  ", " ").strip()
+    """The answer as a person should read it, with the markers removed.
+
+    The marker sits inside a sentence, before its full stop, so removing it
+    leaves a space in front of the punctuation. Tidied here rather than left,
+    because this string is what goes on the projector.
+    """
+    stripped = TOOL_CALL_RE.sub("", text or "")
+    stripped = re.sub(r"\s+([.,;:])", r"\1", stripped)
+    return re.sub(r"\s{2,}", " ", stripped).strip()
 
 
 # --------------------------------------------------------------------------- #

@@ -162,13 +162,17 @@ def test_each_request_gets_its_own_fence_nonce() -> None:
 def test_only_two_runtime_controls_are_deterministic() -> None:
     """The session's argument, as a table.
 
-    The console renders deterministic controls differently and the presenter
-    points at it on slide 7. If this count changes, the slide is wrong.
+    **Two of the six per-request controls**, and the count is worth pinning
+    because the presenter says it aloud on slide 7. Counting the whole spec list
+    instead gives four of eight, which is a different and much weaker claim --
+    ``supplychain`` runs before deployment and ``rule_of_two`` is a reading of
+    the configuration, so neither is a control an attacker meets.
     """
     runtime = [spec for spec in SPECS if spec.key in RUNTIME_KEYS]
+    assert len(runtime) == 6, f"there are now {len(runtime)} runtime controls, not six"
     deterministic = sorted(spec.key for spec in runtime if spec.deterministic)
     assert deterministic == ["residency", "tool_broker"], (
-        f"deterministic runtime controls are {deterministic}; slide 7 says two of five"
+        f"deterministic runtime controls are {deterministic}; the deck says two of six"
     )
 
 

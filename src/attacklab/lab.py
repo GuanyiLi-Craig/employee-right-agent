@@ -75,8 +75,8 @@ MAX_PROMPT_CHARS = 12_000
 #: The assistant's sufficiency gate is a *relevance* gate: it scores how much of
 #: the question's distinctive vocabulary the retrieved provisions cover.  A
 #: direct injection appended to a question adds words no statute contains, which
-#: drags that coverage down -- so at 0.45 the gate refused nine of the twenty
-#: payloads at scores between 0.37 and 0.44, before the model was called and
+#: drags that coverage down -- so at 0.45 the gate refused **ten of the twenty**
+#: payloads, at scores between 0.343 and 0.44, before the model was called and
 #: before any security control ran.
 #:
 #: Two reasons that is the wrong thing to measure here.  It credits containment
@@ -87,8 +87,10 @@ MAX_PROMPT_CHARS = 12_000
 #: the *gate*, not of the layers the session is about.
 #:
 #: So the lab lowers it and reports the effect rather than banking it.  Note
-#: what this does **not** change: every indirect payload scores above 0.83 and
-#: passes either threshold, so demo 1's "every metric agreed" is untouched.
+#: what this does **not** change: every indirect payload scores between 0.50 and
+#: 0.91 and passes either threshold, so demo 1's "every metric agreed" is
+#: untouched. At 0.30 nothing in the catalogue is refused on relevance, which is
+#: the point: what contains a payload is a control, or it is nothing.
 #:
 #: The honest finding to state on stage: a relevance gate incidentally refuses
 #: crude off-topic injections, it is not a security control, and a system

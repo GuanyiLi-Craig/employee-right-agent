@@ -202,6 +202,10 @@ class Lab:
         artefacts: Any = None,
         scan_mode: str | None = None,
         judge: bool = True,
+        #: Off by default because the eval suite builds labs by the dozen and a
+        #: gate that needs a collector is not a gate. The console turns it on:
+        #: slide 12's last beat is the denied call showing up in Phoenix's error
+        #: view, and that only happens if somebody exported it.
         init_tracing: bool = False,
     ) -> None:
         self.registry = registry or Registry()

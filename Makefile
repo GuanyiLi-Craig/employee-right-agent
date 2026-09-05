@@ -8,7 +8,7 @@
         evaluate gate calibrate test test-unit test-evals clean \
         docker-build docker-ingest docker-up docker-down docker-evals docker-logs ui-test phoenix pentest \
         fixtures poison clean-index console attack scan sandbox adversarial dataset \
-        session6 session6-check
+        stack stack-down session6 session6-check
 
 UV ?= uv
 QUESTION ?= What does the document say about bereavement leave?
@@ -145,11 +145,54 @@ dataset: ## Regenerate evals/adversarial.jsonl from the catalogue
 adversarial: ## The session 6 gate: containment, false positives, supply chain
 	$(UV) run pytest evals/test_controls.py evals/test_falsepos.py evals/test_supplychain.py -q
 
+# Ports. Override any of them when the defaults are taken:
+#
+#   make stack DEMO_PORT=8100 CONSOLE_PORT=8180 PHOENIX_PORT=6106
+#
+# Every published port on this project is loopback-only, so a clash is with
+# something else on this machine rather than with the network.
+DEMO_PORT    ?= 8000
+CONSOLE_PORT ?= 8080
+PHOENIX_PORT ?= 6006
+PHOENIX_OTLP ?= 4317
+PHOENIX_URL  := http://localhost:$(PHOENIX_PORT)
+
+stack: ## Assistant + console + phoenix on one set of ports. Override *_PORT when they clash.
+	@echo "starting phoenix on $(PHOENIX_PORT) (OTLP $(PHOENIX_OTLP))"
+	@docker rm -f s6-phoenix >/dev/null 2>&1 || true
+	@docker run -d --rm --name s6-phoenix \
+	  -p $(PHOENIX_PORT):6006 -p $(PHOENIX_OTLP):4317 \
+	  arizephoenix/phoenix:version-20.4.0 >/dev/null \
+	  || echo "  phoenix did not start -- the rest of the stack does not need it"
+	@# The assistant reads the POISONED twin on purpose: the room watches one
+	@# system in two windows, which is the session's whole premise. Point it at
+	@# ./runs instead if you want the clean corpus alongside.
+	@RIGHTS_RUNS_DIR=./runs-poisoned RIGHTS_DEMO_PORT=$(DEMO_PORT) \
+	  PHOENIX_COLLECTOR_ENDPOINT=$(PHOENIX_URL) PHOENIX_PROJECT_NAME=session6-assistant \
+	  $(UV) run rights-demo > /tmp/s6-assistant.log 2>&1 &
+	@PHOENIX_COLLECTOR_ENDPOINT=$(PHOENIX_URL) PHOENIX_PROJECT_NAME=session6-attacklab \
+	  $(UV) run python -m attacklab.console --port $(CONSOLE_PORT) > /tmp/s6-console.log 2>&1 &
+	@echo "warming up -- the ONNX embedder pays its first inference now, not on stage"
+	@sleep 38
+	@echo
+	@echo "  assistant  http://127.0.0.1:$(DEMO_PORT)     (poisoned index)"
+	@echo "  console    http://127.0.0.1:$(CONSOLE_PORT)     controls ALL OFF"
+	@echo "  phoenix    http://127.0.0.1:$(PHOENIX_PORT)     projects: session6-assistant, session6-attacklab"
+	@echo
+	@echo "  logs       /tmp/s6-assistant.log  /tmp/s6-console.log"
+	@echo "  stop       make stack-down"
+
+stack-down: ## Stop everything `make stack` started
+	@pkill -f "attacklab.console" 2>/dev/null || true
+	@pkill -f "rights_agent.demo" 2>/dev/null || true
+	@pkill -f "rights-demo" 2>/dev/null || true
+	@docker rm -f s6-phoenix >/dev/null 2>&1 || true
+	@echo "stack stopped"
+
 session6: fixtures poison clean-index ## Everything demo day needs, in one command
 	@echo
-	@echo "  assistant  -> make demo      (http://127.0.0.1:8000)"
-	@echo "  console    -> make console   (http://127.0.0.1:8080)"
-	@echo "  phoenix    -> make docker-up (http://127.0.0.1:6006)"
+	@echo "  everything -> make stack     (assistant + console + phoenix)"
+	@echo "  ports taken? make stack DEMO_PORT=8100 CONSOLE_PORT=8180 PHOENIX_PORT=6106"
 	@echo
 	@echo "  Controls start ALL OFF. Run demo 1 once so you know it lands."
 	@echo "  The demo-5 PII fixture is SYNTHETIC. Never demo with real personal data."

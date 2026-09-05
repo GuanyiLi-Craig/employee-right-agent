@@ -42,6 +42,7 @@ from attacklab.lab import Lab
 from attacklab.registry import PRESET_LABELS, PRESETS, Registry
 from attacklab.sandbox.runner import FAILURE_FIXTURES, run_snippet, sandbox_limits
 from attacklab.supplychain.__main__ import run_all as run_supplychain
+from rights_agent.config import settings as load_settings
 from rights_agent.log import configure_logging, get_logger
 
 log = get_logger("attacklab.console")
@@ -110,7 +111,14 @@ class ConsoleService:
         self.region = "eu-west-2"
         self.poisoned = poisoned
         self.scan_mode = scan_mode
-        self.lab = Lab(self.registry, poisoned=poisoned, scan_mode=scan_mode)
+        # Tracing follows the assistant's own setting. The console is the one
+        # place that should export: a denied tool call is a span with error=true,
+        # and "a denied call is your best injection detector" is only one click
+        # on stage if Phoenix actually received it.
+        tracing = load_settings().tracing_enabled
+        self.lab = Lab(
+            self.registry, poisoned=poisoned, scan_mode=scan_mode, init_tracing=tracing
+        )
         #: A second lab on the **clean** index, used only for benign questions.
         #:
         #: A false-positive rate is by definition measured on inputs where
@@ -124,6 +132,8 @@ class ConsoleService:
         #: Two labs rather than one is about two seconds of extra startup and it
         #: is the difference between a number that means something and one that
         #: does not.
+        # The second lab shares the process's telemetry: initialising it twice
+        # would replace the tracer provider mid-session.
         self.benign_lab = Lab(self.registry, poisoned=False, scan_mode=scan_mode)
         #: Every run this session, for the tally. Bounded, because a long
         #: rehearsal should not grow without limit.

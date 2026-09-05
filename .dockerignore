@@ -8,6 +8,23 @@
 **/.ruff_cache
 **/.mypy_cache
 runs
+# The attack lab's two index twins. Rebuilt by `make poison` / `make clean-index`
+# and about 25MB between them, so there is no reason to hand them to the daemon.
+runs-poisoned
+runs-clean
+# Generated fixtures, and one of them matters: fixtures/models/tiny.pt carries a
+# live pickle REDUCE. It is never COPYed into a layer, but a build context is
+# still somewhere it has no business being -- and a security lab shipping a
+# reduce-carrying pickle into a container build is the joke telling itself.
+# `docker compose run --rm scan` regenerates them at runtime.
+fixtures
+# Presenter material: the deck, the run sheet, the working notes.
+presentation
+prep
+demo
+# The browser harness installs its own node_modules and writes screenshots.
+uitest/node_modules
+uitest/shots
 *.log
 .env
 .env.*

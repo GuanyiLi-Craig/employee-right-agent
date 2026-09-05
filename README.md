@@ -514,6 +514,192 @@ The best finding came from a template catching a hole in the fix for the one
 above it: `/api/audit` was protected while `/api/chat/history` reconstructed the
 same records through a side door.
 
+## The attack lab (session 6)
+
+Session 5 tested whether this system works when everyone behaves correctly.
+The attack lab asks whether it still works when someone is actively trying to
+make it fail.
+
+**It does not fork the assistant.** Forking would mean the audience is watching a
+different system from the one they trust, which destroys the whole premise. So
+the assistant gained **seven hook points** in
+[`src/rights_agent/hooks.py`](src/rights_agent/hooks.py) — each a no-op — and
+`attacklab` supplies the implementations.
+
+```bash
+make session6         # build the fixtures and both index twins (~25s, once)
+make session6-check   # prove all five demos land before the room fills
+make stack            # assistant :8000, console :8080, phoenix :6006
+make adversarial      # the CI gate: containment, false positives, supply chain
+```
+
+`make stack` takes port overrides, which is the normal case on a laptop that is
+already using 8000:
+
+```bash
+make stack DEMO_PORT=8100 CONSOLE_PORT=8180 PHOENIX_PORT=6106 PHOENIX_OTLP=4417
+make stack-down
+```
+
+Step-by-step operating instructions for each demo are in
+[`demo/session6-demo-operations.md`](demo/session6-demo-operations.md).
+
+Three rules constrain everything in it:
+
+1. **No payload does real damage.** Injection payloads cause a wrong answer, or
+   an *attempt* at a tool call that should not be allowed. Nothing exfiltrates,
+   nothing reaches the network, nothing outside the scratch directory is
+   touched. The point of every demonstration is the attempt and what happens to
+   it, not the effect.
+2. **No real malware.** The pickle fixture's payload writes one marker file to a
+   temporary path — and it never runs, because the scanner reads opcodes with
+   `pickletools.genops` and never calls `pickle.load`. The detector is the
+   deliverable; the payload is a fixture.
+3. **Local and offline.** No live target other than the assistant on this
+   machine, and the whole lab runs with no network and no API key.
+
+### The seven hooks
+
+| Hook | Called from | On |
+|---|---|---|
+| `on_question` | [`graph.py`](src/rights_agent/graph.py) | the raw user string, before retrieval |
+| `on_context` | [`retrieval.py`](src/rights_agent/retrieval.py) | the block list, after expansion |
+| `on_prompt` | [`llm.py`](src/rights_agent/llm.py) | system + user, immediately before the call |
+| `on_answer` | [`graph.py`](src/rights_agent/graph.py) | the draft answer, before return or log |
+| `on_tool_call` | the lab's dispatcher | every tool invocation, with the caller |
+| `on_log` | [`audit.py`](src/rights_agent/audit.py) | every record, before the hash chain |
+| `resolve_model` | [`llm.py`](src/rights_agent/llm.py) | choosing a model for a role |
+
+**Inbound hooks rewrite; outbound hooks judge.** That split is in the signatures
+and is not an accident: a control that both changes a value and reports a
+verdict silently alters behaviour when it was supposed to be observing.
+
+With `NullHooks` installed, every hook returns its argument **by identity** —
+asserted in [`tests/test_hooks.py`](tests/test_hooks.py) rather than argued for,
+which is what makes shipping them in the assistant permanently defensible.
+
+One trap worth naming, because it cost an afternoon and was completely silent.
+Every call site was first written as `from rights_agent.hooks import HOOKS`,
+which binds the *value* at import time — so `install()` rebound the module
+global and every call site kept calling the `NullHooks` it had captured. The
+console's toggles flipped, the spans recorded the snapshot, the tool list shrank,
+and not one control ran. The correct form is `from rights_agent import hooks`
+then `hooks.HOOKS.on_question(...)`, and a test parses the source tree to keep it
+that way.
+
+### The eight controls
+
+| key | layer | deterministic | what it is honestly worth |
+|---|---|---|---|
+| `input_scan` | 1 | no | Catches the obvious; misses the polite rephrase. That is the lesson, not a bug. |
+| `provenance` | 2 | no | Structural and nearly free. **Not a boundary** — the model still receives the text. |
+| `output_verify` | 3 | no | Easier than input scanning because the attack has narrowed. |
+| `tool_broker` | 4 | **yes** | The only guarantee in the lab, and the most engineering work on the list. |
+| `pii_mask` | 0 | partly | Regex plus validators: a floor, not a solution. Production wants NER. |
+| `residency` | 0 | **yes** | Fails closed. Never routes to the nearest available region. |
+| `supplychain` | pre-deploy | yes | Five scanners. Not per-request. |
+| `rule_of_two` | design-time | **yes** | Not a filter — a reading of the configuration. |
+
+Two of the **six** per-request controls are deterministic — the tool broker
+and residency. **Guardrails reduce probability; permissions reduce blast
+radius.**
+
+### The five demos
+
+Each is asserted by `make session6-check`, which checks 30 beats and prints the
+number the presenter will point at.
+
+| # | What happens | The beat it turns on |
+|---|---|---|
+| 1 | A poisoned provision is retrieved, obeyed and cited | Sufficiency 0.89, groundedness 1.0, citations resolve. **Nothing failed.** |
+| 2 | Input scan catches `p01`, misses `p07`, layer 3 catches `p07` | Both rates on the panel, and layer 3 costs money where layers 1–2 do not |
+| 3 | Five scanners, four beats | Pickle flagged, safetensors passed, the poison found **by content** |
+| 4 | The same payload, contained | Layers 1–3 **off**, 3 tools instead of 13, model still fooled, denial in the hash chain |
+| 5 | PII tokenised, then an unsupported region | Placeholders in the assembled prompt; a refusal, not a fallback |
+
+Demo 1 and demo 4 are the session. If time is short, ship those two and narrate
+the rest.
+
+### The catalogue, and the assertion that matters
+
+Twenty runnable payloads plus two documented gaps, each carrying **both** risk
+identifiers — the 2026 LLM list owns the model as a *component*, and the Agentic
+list takes over the moment it becomes an *actor*.
+
+Two fields do the pedagogical work. `expect_blocked_by` is the ordinary
+assertion. `expect_evades` is the unusual one: **the lab asserting, in CI, that a
+control fails against a payload class.**
+
+```
+p07 was CONTAINED by input_scan, which the catalogue says it evades.
+If this is a real improvement, update expect_evades AND report the
+false-positive delta in the same commit.
+```
+
+That message is the difference between a suite that measures security and a
+suite that congratulates you. `p07`–`p10` must get past layer 1, and if they
+ever stop doing so the demo silently loses its point — which the presenter would
+otherwise discover in front of a room.
+
+### Measured numbers, and where they may appear
+
+Read off the panel on the day. **No number here belongs on a slide** — only fixed
+facts do, which is the session 5 discipline applied to security.
+
+- Combined block rate is measured over payloads that **would otherwise escape**.
+  Counting a payload nothing had to stop rewards a control for containment it
+  did not provide.
+- The lab lowers the assistant's sufficiency threshold from 0.45 to 0.30, and
+  [`lab.py`](src/attacklab/lab.py) explains why at length. At 0.45 that
+  *relevance* gate refused ten of the twenty payloads before any control ran,
+  which credits containment to a control never designed for it — and survives
+  exactly one more sentence of statutory vocabulary from the attacker. Every
+  indirect payload scores 0.50–0.91 and passes either threshold, so demo 1 is
+  unaffected.
+- The false-positive rate is measured against the **clean** index, on 25
+  ordinary employment-law questions that deliberately contain "notify",
+  "instruct", "disregard" and a mailbox in an innocent use. Measured against the
+  poisoned index it reads 100% instead of 4%, because a question about shift
+  notice retrieves the document `p05` lives in.
+- Thresholds live in [`evals/thresholds.json`](evals/thresholds.json), and every
+  one carries a note saying where the number came from.
+
+Three things the lab found in its own code while being built, all now fixed and
+all with a test:
+
+- `send_notification` was reversible, so the HR-administrator route held all
+  three trifecta properties with no approval step. The Rule of Two check caught
+  it. The fix was in the grant configuration, not the test.
+- `resolve_model` was called inside `make_client`, which the lab's own injected
+  client skips — so demo 5 answered happily from an unsupported region.
+- `controls={}` was falsy, so every "run this bare" probe inherited the
+  console's toggles and the tally reported a 0% block rate while the panel showed
+  payloads contained.
+
+### What the lab deliberately does not do
+
+- **Model-level defences** — adversarial training, safety fine-tuning. Real, and
+  not something you configure at the application layer. A bigger model resists
+  injection somewhat and not reliably; do not buy it as a control.
+- **Network and infrastructure security.** Assumed, not demonstrated.
+- **Multi-agent attacks** — `ASI07` and `ASI08`. Needs a multi-agent system to be
+  worth showing, so it is session 7 rather than a gap.
+- **Real credential handling.** The broker mints fake grants. Wiring it to an IdP
+  is the exercise to take back to work, and it is where the actual cost lives.
+- **A container is not a security boundary** against genuinely hostile code. The
+  sandbox is a subprocess and says so; the production answer is a separate
+  kernel or a microVM. Nobody should leave thinking otherwise.
+- **Cross-modal payloads** are documented, not simulated. The assistant has no
+  image or audio channel, and faking one would let the lab claim coverage it
+  does not have — which is a hole shaped exactly like your upload endpoint.
+
+The offline victim model is a **simulation of instruction-following**, labelled as
+such in [`attacklab/model.py`](src/attacklab/model.py) and on the console. Set
+`RIGHTS_MODEL` to a hosted model and none of it is used: the payload is the same
+text, and whether the model complies becomes something the room watches rather
+than something the lab decides. Say so out loud — it is the difference between a
+demonstration and a puppet show.
+
 ## Testing it yourself
 
 [`TESTING.md`](TESTING.md) is a run-through with expected output for every step:
@@ -643,21 +829,40 @@ Two more found while building this, both specific to chromadb 1.5.x:
 
 ```
 src/rights_agent/       the package: pipelines, retrieval, graph, telemetry, demo
+src/rights_agent/hooks.py   the seven hook points; no-ops by default (session 6)
+src/attacklab/          the attack lab: controls, payloads, scanners, console
+  controls/             the eight controls, plus the stack that presents them
+  attacks/              the catalogue, the payload files, the poisoned corpus
+  supplychain/          five pre-deployment scanners and one CLI
+  sandbox/              the subprocess jail for the one tool that executes output
+  console/              the attack panel: stdlib server, one HTML file
+  rehearse.py           `make session6-check` — proves all five demos land
 data/                   the committed corpus (generated, reproducible)
+fixtures/               generated: the model twins, skill manifests, lockfile
 evals/                  datasets/<embedder>/{golden,calibration}.jsonl + baseline.json
+                        plus adversarial.jsonl, falsepos.jsonl, thresholds.json
 tests/                  unit tests; no index required
 docker/                 Dockerfile (runtime + dev targets) and the entrypoint
-docker-compose.yml      phoenix · dashboard · ingest jobs · tools
+docker-compose.yml      phoenix · dashboard · console · ingest jobs · tools
 security/               nuclei templates for this application's own risks
+demo/                   step-by-step operating instructions for the five demos
 uitest/                 browser tests that assert on what is on screen
 runs/                   generated: chroma index, manifests, metrics.jsonl,
                         audit.jsonl, audit_checkpoint.json (all git-ignored)
+runs-poisoned/          generated: the poisoned index twin, and the lab's own
+runs-clean/             generated: its clean counterpart (both git-ignored)
 ```
 
 ## Out of scope
 
 Multi-tenant auth, a production web front end, fine-tuning, distributed serving,
-agent tool-calling, and any cloud dependency.
+and any cloud dependency.
+
+Agent tool-calling was on this list until session 6, and the way it arrived is
+worth stating: the assistant still has **no** tool surface of its own. The lab
+owns the dispatcher, which is the correct default — a tool nobody meant to
+expose is the whole subject of `scan_tool_surface`, and the safest number of
+tools for a system that does not need any is zero.
 
 ## Contributing
 

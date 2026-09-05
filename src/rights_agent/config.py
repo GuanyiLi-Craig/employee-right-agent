@@ -46,6 +46,12 @@ from typing import Final
 #: nothing, sits in the searched index, and turned up as cited evidence in an
 #: answer. 63 of the Act's leaves were fragments of that kind, and one of them
 #: reached the committed calibration set.
+#: Where the bytes are processed, when nothing says otherwise.
+#:
+#: Mirrored in :mod:`rights_agent.hooks`, which cannot import this module (the
+#: import runs the other way).  ``tests/test_hooks.py`` asserts the two agree.
+DEFAULT_REGION: Final[str] = "eu-west-2"
+
 PARSER_VERSION: Final[str] = "parser-6"
 PROMPT_VERSION: Final[str] = "prompt-3"
 
@@ -320,6 +326,14 @@ class Settings:
     #: Override the OpenAI-compatible endpoint (a proxy, a self-hosted gateway).
     deepseek_base_url: str
 
+    # -- residency -----------------------------------------------------------
+    #: Where inference, trace export and eval dataset reads are permitted to
+    #: happen.  A field rather than a deployment note: region is part of a
+    #: model reference's identity, and a reference without one is a routing
+    #: decision nobody made.  Enforced by the lab's residency control; recorded
+    #: here so there is exactly one place the value comes from.
+    region: str
+
     # -- telemetry -----------------------------------------------------------
     tracing_enabled: bool
     phoenix_endpoint: str
@@ -457,6 +471,7 @@ class Settings:
             degraded=_env_bool("RIGHTS_DEGRADED", False),
             thinking=_env_bool("RIGHTS_THINKING", False),
             deepseek_base_url=_raw("RIGHTS_DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
+            region=_raw("RIGHTS_REGION", DEFAULT_REGION),
             tracing_enabled=_env_bool("RIGHTS_TRACING", True),
             phoenix_endpoint=_raw(
                 "PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006"

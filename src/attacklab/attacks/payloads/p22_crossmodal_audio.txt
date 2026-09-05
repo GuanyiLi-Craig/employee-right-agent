@@ -1,0 +1,1 @@
+[GAP — NOT EXERCISED] The same instruction spoken in a 4-second audio clip attached to the query. New scope in the 2026 LLM01 entry. The assistant has no audio channel, so this is a documented gap rather than a simulated one — faking the channel would let the lab claim coverage it does not have.

@@ -107,7 +107,13 @@ is not asserted is a control that comes back off in the next refactor.
 - **The corpus is trusted.** Retrieved text goes into the prompt, so a corpus an
   attacker can write to is an indirect prompt-injection channel. Here the corpus
   is committed to the repository and the index is built by a separate job, so the
-  trust boundary is the repository.
+  trust boundary is the repository. The session 6 attack lab is what happens when
+  that boundary does not hold: it builds a poisoned twin of the index, and the
+  measured result is that the assistant retrieves the hostile provision at rank
+  1, obeys it, cites it correctly, and scores 1.00 on every quality metric. The
+  gate does not fire because nothing about the answer is ungrounded — it is
+  faithfully grounded in a document that lies. See
+  [README](../README.md#the-attack-lab-session-6).
 - **`/api/chunks` is unauthenticated, on purpose.** The index panel reads the
   embedded corpus — public UK legislation, already returned verbatim in every
   answer's "retrieved provisions" detail — plus each chunk's metadata and its
@@ -116,10 +122,26 @@ is not asserted is a control that comes back off in the next refactor.
   was. Two things would change that judgement: a corpus that is not public, or an
   embedding model whose vectors are themselves sensitive. Both are worth
   re-checking before this pattern is copied to a private document set.
+- **The attack console has no login either, and every POST changes lab state.**
+  It publishes on loopback like the dashboard (`CONSOLE_BIND` defaults to
+  `127.0.0.1`), sends the same security headers, and now refuses any POST that
+  is not `application/json` or that declares `Sec-Fetch-Site: cross-site` — which
+  is what stops a hostile tab open on the presenter's machine from flipping a
+  control off mid-demo with a CORS-simple `text/plain` fetch. What remains
+  accepted is the same as the dashboard's: anyone who can reach the port can
+  drive it. That is the intended posture for a tool whose whole purpose is
+  running attacks against itself, and it is the reason the port is not published
+  beyond loopback by default.
+
 - **Prompt injection in the question is not prevented**, only bounded: the
   sufficiency gate refuses off-corpus questions, the answer is scored for
   groundedness and citation coverage, and every request lands in the audit
-  record. Those are detection and blast-radius controls, not prevention.
+  record. Those are detection and blast-radius controls, not prevention. The
+  attack lab quantifies the gap rather than leaving it as a caveat: with every
+  heuristic layer switched on it measures a **33% block rate**, and the rows in
+  `evals/adversarial.jsonl` marked `expect_evades` fail the build if a control
+  ever starts blocking them. The two controls that do hold — the tool broker and
+  the residency check — are deterministic, which is the point.
 
 ## Reproducing
 

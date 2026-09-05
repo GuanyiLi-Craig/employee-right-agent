@@ -33,8 +33,10 @@ from typing import Annotated, Any, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from rights_agent import hooks
 from rights_agent.config import Settings
 from rights_agent.config import settings as load_settings
+from rights_agent.hooks import AnswerContext, ResidencyError
 from rights_agent.judges import HeuristicJudge, Judge
 from rights_agent.llm import LLMClient, generate
 from rights_agent.log import get_logger
@@ -203,8 +205,20 @@ def _node_classify(deps: AgentDeps):
     def classify(state: AgentState) -> dict[str, Any]:
         updates: dict[str, Any] = {}
         with _timed("classify", updates), span("rag.classify", CHAIN) as current:
-            intent = classify_intent(state["question"])
-            current.set_input(state["question"])
+            # Hook 1 of 7: the raw user string, before anything reads it.
+            # A rewrite, not a judgement -- see rights_agent.hooks. With
+            # NullHooks this is `question = state["question"]`.
+            question = hooks.HOOKS.on_question(state["question"])
+            if question != state["question"]:
+                updates["question"] = question
+                # The gate scores what the user asked, and what the user asked
+                # is now this: scoring the unredacted original would score a
+                # string no downstream stage will ever see.
+                updates["scored_question"] = question
+                updates["rewritten_query"] = question
+                current.set_attribute("hooks.question_rewritten", True)
+            intent = classify_intent(question)
+            current.set_input(question)
             current.set_output(intent)
             updates["intent"] = intent
             updates["index_version"] = deps.index_version
@@ -308,13 +322,30 @@ def _node_generate(deps: AgentDeps):
     def generate_node(state: AgentState) -> dict[str, Any]:
         updates: dict[str, Any] = {}
         with _timed("generate", updates):
-            result = generate(
-                state["question"],
-                state.get("context", ""),
-                deps.settings,
-                client=deps.client,
-                degraded=deps.degraded,
-            )
+            try:
+                result = generate(
+                    state["question"],
+                    state.get("context", ""),
+                    deps.settings,
+                    client=deps.client,
+                    degraded=deps.degraded,
+                )
+            except ResidencyError as exc:
+                # Refuse, do not route elsewhere. A system that answers from
+                # the nearest available region has no residency guarantee, and
+                # the refusal is the only observable difference between the two.
+                # No model was called: `generate` raises out of client
+                # selection, before the first byte of the prompt is sent.
+                updates.update(
+                    answer=(
+                        "I cannot answer this request. "
+                        f"{exc} No model was called and nothing was routed elsewhere."
+                    ),
+                    refused=True,
+                    citations=[],
+                    error=f"ResidencyError: {exc}",
+                )
+                return updates
             total_cost, breakdown = result.cost
             updates.update(
                 answer=result.text,
@@ -336,6 +367,32 @@ def _node_generate(deps: AgentDeps):
             # asked for as well as what answered.
             updates["model"] = result.model
             updates["requested_model"] = deps.settings.model
+
+            # Hook 4 of 7: the draft answer, before it is returned or logged.
+            # A judgement, not a rewrite: the control reports a verdict and the
+            # graph decides what the user is told, which keeps "what was
+            # blocked" and "what was said instead" in one readable place.
+            verdict = hooks.HOOKS.on_answer(
+                result.text,
+                AnswerContext(
+                    question=state["question"],
+                    context=state.get("context", ""),
+                    citations=tuple(result.citations),
+                    request_id=str(state.get("session_id") or ""),
+                    intent=str(state.get("intent") or ""),
+                    docs=tuple(state.get("docs") or ()),
+                ),
+            )
+            if not verdict.allowed:
+                updates["answer"] = verdict.replacement or (
+                    "I cannot return this answer. It was withheld by an output check "
+                    f"({verdict.control or 'output_verify'}): {verdict.reason}"
+                )
+                # Not a refusal: the gate was satisfied and the model answered.
+                # Conflating the two would make the panel read as a retrieval
+                # failure, which is the wrong lesson from a blocked action.
+                updates["citations"] = []
+                updates["error"] = f"blocked_by_{verdict.control or 'output_verify'}"
         return updates
 
     return generate_node

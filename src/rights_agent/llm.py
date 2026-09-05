@@ -33,7 +33,9 @@ from dataclasses import dataclass, field
 from statistics import mean
 from typing import Any, Protocol
 
+from rights_agent import hooks
 from rights_agent.config import PROMPT_VERSION, Settings, cost_usd, price_for
+from rights_agent.hooks import ModelRef, ResidencyError
 from rights_agent.log import get_logger
 from rights_agent.metrics import percentile
 from rights_agent.telemetry import LLM, SEMCONV, span
@@ -649,14 +651,50 @@ def _without_citations(chunks: Iterator[str]) -> Iterator[str]:
 # --------------------------------------------------------------------------- #
 # Selection
 # --------------------------------------------------------------------------- #
-def make_client(settings: Settings, *, degraded: bool | None = None) -> LLMClient:
+def resolve_model(
+    settings: Settings, role: str = "generate"
+) -> ModelRef:
+    """Hook 7 of 7: which model serves this role, and from where.
+
+    A free function, called by :func:`generate` **before** the client is
+    resolved, because the first version called it inside :func:`make_client` and
+    that put the residency check on the wrong side of a branch: ``generate``
+    accepts an injected ``client``, and the attack lab injects one, so
+    ``make_client`` was never reached and the region was never checked.  Demo 5
+    answered happily from an unsupported region.
+
+    Residency is a property of the *request*, not of who supplied the client
+    object, so the check belongs where every request passes.
+
+    With :class:`~rights_agent.hooks.NullHooks` this returns ``settings.model``
+    and the configured region unchanged.  It may raise
+    :class:`~rights_agent.hooks.ResidencyError`, and no caller may catch that
+    into a fallback.
+    """
+    return hooks.HOOKS.resolve_model(role, settings.region, settings.model)
+
+
+def make_client(
+    settings: Settings, *, degraded: bool | None = None, ref: ModelRef | None = None
+) -> LLMClient:
     """Pick a client for ``settings.model``, falling back to the stub.
 
     A missing key or a missing SDK is a fallback, not a crash: the demo must
     run with no API key and no network.
+
+    ``ref`` lets :func:`generate` pass a model reference it has already
+    resolved, so the hook fires exactly once per request.
     """
     degraded = settings.degraded if degraded is None else degraded
-    model = settings.model
+
+    # Deliberately *outside* the try/except below: `ResidencyError` must not be
+    # reachable by the fallback. That is the single most important property of
+    # this function, because the naive version -- one `except Exception` around
+    # everything -- turns "refuse, we cannot serve this region" into "quietly
+    # answer from the stub", which is the exact failure the residency control
+    # exists to demonstrate.
+    ref = ref or resolve_model(settings)
+    model = ref.model or settings.model
     if model == STUB_MODEL:
         return StubClient(degraded=degraded, max_chars=settings.max_answer_chars)
 
@@ -688,6 +726,12 @@ def make_client(settings: Settings, *, degraded: bool | None = None) -> LLMClien
         # Degradation has to work for whichever provider is configured, or the
         # incident demo silently shows nothing on the day.
         return DegradedClient(hosted) if degraded else hosted
+    except ResidencyError:
+        # Never a fallback. Re-raised explicitly, because a bare `except
+        # Exception` below would otherwise swallow it -- and a residency refusal
+        # that degrades into a stub answer is indistinguishable, from the
+        # outside, from having no residency control at all.
+        raise
     except Exception as exc:  # noqa: BLE001 - any failure means "use the stub"
         # A fallback, not a crash: the demo must run with no key and no network.
         # Logged at warning because silently answering from the stub while the
@@ -725,10 +769,19 @@ def generate(
     on_token: Callable[[str], None] | None = None,
 ) -> LLMResult:
     """Stream an answer and return it with measured latency and token counts."""
-    client = client or make_client(settings, degraded=degraded)
+    # Resolved before the client, and unconditionally -- including when a
+    # caller injected one. See `resolve_model`: the residency precondition is
+    # about the request, not about who built the client object.
+    ref = resolve_model(settings)
+    client = client or make_client(settings, degraded=degraded, ref=ref)
     on_token = on_token or _token_sink.get()
     is_degraded = bool(getattr(client, "degraded", False))
-    prompt = build_prompt(question, context)
+    # Hook 3 of 7: the assembled system and user strings, immediately before the
+    # call and after nothing else touches them. A rewrite: this is where the
+    # provenance fence goes, and the fence is only honest if there is no code
+    # between it and the wire. With NullHooks these are SYSTEM_PROMPT and the
+    # freshly built prompt, unchanged.
+    system, prompt = hooks.HOOKS.on_prompt(SYSTEM_PROMPT, build_prompt(question, context))
     timer = StreamTimer()
     chunks: list[str] = []
     error = ""
@@ -741,11 +794,13 @@ def generate(
             SEMCONV.INPUT_VALUE: question,
             "metadata.prompt_version": PROMPT_VERSION,
             "metadata.degraded": is_degraded,
+            "metadata.region": ref.region,
+            "metadata.provider_jurisdiction": ref.provider_jurisdiction,
             "llm.prompt_chars": len(prompt),
         },
     ) as current:
         try:
-            for chunk in client.stream(SYSTEM_PROMPT, prompt):
+            for chunk in client.stream(system, prompt):
                 timer.record()
                 chunks.append(chunk)
                 if on_token is not None:
@@ -760,7 +815,10 @@ def generate(
         if reported is not None:
             prompt_tokens, completion_tokens, cached_tokens = reported
         else:
-            prompt_tokens = count_tokens(f"{SYSTEM_PROMPT}\n{prompt}", client.model)
+            # Priced on what was *sent*, not on what was drafted: a fence that
+            # adds tokens adds cost, and a control whose cost is invisible is a
+            # control nobody can defend in a design review.
+            prompt_tokens = count_tokens(f"{system}\n{prompt}", client.model)
             completion_tokens = count_tokens(answer, client.model)
             cached_tokens = 0
 

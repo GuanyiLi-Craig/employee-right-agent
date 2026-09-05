@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session 6 — Attack Console</title>
+<style>
+/* Projected, from the back of a room. Large type, high contrast, no animation.
+   Two of the five demos run from a one-inch strip at the foot of a slide, so the
+   headline result has to be readable without scrolling: #verdict is sized for
+   that and everything else is secondary. */
+:root {
+  --bg: #0d1117; --panel: #161b22; --edge: #30363d; --ink: #e6edf3;
+  --dim: #9198a1; --red: #ff6b6b; --amber: #ffb84d; --green: #4ade80;
+  --blue: #58a6ff; --deterministic: #a78bfa;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+header {
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+  padding: 12px 20px; border-bottom: 2px solid var(--edge); background: var(--panel);
+}
+header h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+header .meta { color: var(--dim); font-size: 13px; }
+header .poisoned { color: var(--red); font-weight: 700; }
+main { display: grid; grid-template-columns: 400px 1fr; gap: 0; min-height: calc(100vh - 58px); }
+#left { border-right: 2px solid var(--edge); padding: 16px 18px; overflow-y: auto; }
+#right { padding: 16px 20px; overflow-y: auto; }
+h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--dim); margin: 22px 0 8px; font-weight: 700;
+}
+h2:first-child { margin-top: 0; }
+
+/* ---- Rule of Two: the largest thing after Run. Slide 6 lives here. ---- */
+#trifecta { border: 2px solid var(--edge); border-radius: 8px; padding: 12px 14px; background: var(--panel); }
+#trifecta.red { border-color: var(--red); }
+#trifecta.amber { border-color: var(--amber); }
+#trifecta.green { border-color: var(--green); }
+#trifecta .lamps { display: flex; gap: 10px; margin: 8px 0; }
+#trifecta .lamp {
+  flex: 1; text-align: center; padding: 10px 6px; border-radius: 6px;
+  border: 2px solid var(--edge); font-size: 12px; line-height: 1.25; color: var(--dim);
+}
+#trifecta .lamp.on { border-color: var(--red); color: var(--ink); background: #2d1418; }
+#trifecta .lamp b { display: block; font-size: 22px; }
+#trifecta .verdict { font-size: 17px; font-weight: 700; }
+#trifecta.red .verdict { color: var(--red); }
+#trifecta.amber .verdict { color: var(--amber); }
+#trifecta.green .verdict { color: var(--green); }
+#trifecta .why { color: var(--dim); font-size: 12px; margin-top: 6px; }
+
+/* ---- Controls ---- */
+.ctl {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; margin-bottom: 5px;
+  border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); cursor: pointer;
+}
+.ctl.on { border-color: var(--blue); background: #11213a; }
+.ctl.det { border-left: 5px solid var(--deterministic); }
+.ctl.on.det { border-left-color: var(--deterministic); }
+.ctl input { margin: 3px 0 0; width: 17px; height: 17px; accent-color: var(--blue); }
+.ctl .name { font-weight: 600; font-size: 15px; }
+.ctl .tag {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--dim); margin-left: 6px;
+}
+.ctl .tag.det { color: var(--deterministic); font-weight: 700; }
+.ctl .note { color: var(--dim); font-size: 11.5px; margin-top: 3px; }
+
+button {
+  font: inherit; color: var(--ink); background: #21262d; border: 1px solid var(--edge);
+  border-radius: 6px; padding: 7px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--blue); }
+button.primary {
+  background: #1f6feb; border-color: #1f6feb; font-weight: 700; font-size: 19px;
+  padding: 14px 20px; width: 100%;
+}
+button.active { border-color: var(--blue); background: #11213a; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+.row.tight > * { flex: 1; font-size: 13px; padding: 8px 6px; }
+kbd {
+  font-family: ui-monospace, monospace; font-size: 10px; border: 1px solid var(--edge);
+  border-radius: 3px; padding: 0 3px; color: var(--dim);
+}
+select, input[type=text] {
+  font: inherit; width: 100%; color: var(--ink); background: #0d1117;
+  border: 1px solid var(--edge); border-radius: 6px; padding: 8px;
+}
+
+/* ---- Result ---- */
+#verdict {
+  border: 3px solid var(--edge); border-radius: 8px; padding: 14px 18px; background: var(--panel);
+}
+#verdict.contained { border-color: var(--green); }
+#verdict.escaped { border-color: var(--red); }
+#verdict .head { font-size: 34px; font-weight: 800; letter-spacing: .02em; line-height: 1.1; }
+#verdict.contained .head { color: var(--green); }
+#verdict.escaped .head { color: var(--red); }
+#verdict .why { font-size: 17px; margin-top: 6px; }
+#verdict .ids { color: var(--dim); font-size: 12px; margin-top: 6px; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { border: 1px solid var(--edge); border-radius: 8px; padding: 12px 14px; background: var(--panel); }
+.card h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px;
+  max-height: 340px; overflow-y: auto; color: var(--ink);
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--edge); }
+th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+td.num { text-align: right; font-family: ui-monospace, monospace; }
+.pill {
+  display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+  border: 1px solid var(--edge); color: var(--dim);
+}
+.pill.fail, .pill.deny { border-color: var(--red); color: var(--red); }
+.pill.pass, .pill.allow { border-color: var(--green); color: var(--green); }
+.pill.warn, .pill.needs_approval { border-color: var(--amber); color: var(--amber); }
+.fence { color: var(--amber); font-weight: 700; }
+.hit { background: #4a1d24; color: #ffd9de; padding: 0 2px; border-radius: 2px; }
+.tok { background: #1d3a4a; color: #cdeaff; padding: 0 2px; border-radius: 2px; }
+.dim { color: var(--dim); }
+.big { font-size: 26px; font-weight: 800; font-family: ui-monospace, monospace; }
+.hidden { display: none; }
+ul.tight { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; }
+ul.tight li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Session 6 — Attack Console</h1>
+  <span class="meta">index <span id="hIndex">…</span></span>
+  <span class="meta">model <span id="hModel">…</span></span>
+  <span class="meta" id="hPoison"></span>
+  <span class="meta" style="margin-left:auto">
+    <kbd>1</kbd>–<kbd>4</kbd> presets · <kbd>R</kbd> run · <kbd>0</kbd> reset
+  </span>
+</header>
+
+<main>
+<div id="left">
+  <h2>Rule of Two <span class="dim">— design-time, computed from configuration</span></h2>
+  <div id="trifecta"></div>
+
+  <h2>Presets</h2>
+  <div class="row tight" id="presets"></div>
+
+  <h2>Controls</h2>
+  <div id="controls"></div>
+
+  <h2>Caller &amp; routing</h2>
+  <label class="dim" style="font-size:12px">Persona (the security principal)</label>
+  <select id="persona"></select>
+  <label class="dim" style="font-size:12px; display:block; margin-top:8px">Region</label>
+  <select id="region"></select>
+  <label class="dim" style="font-size:12px; display:block; margin-top:8px">Input scanner</label>
+  <select id="scanMode">
+    <option value="heuristic">heuristic — free, easy to defeat</option>
+    <option value="model">model-backed — better recall, real cost</option>
+  </select>
+
+  <h2>Attack</h2>
+  <select id="payload"></select>
+  <div class="dim" style="font-size:12px; margin:6px 0 8px" id="payloadNote"></div>
+  <button class="primary" id="run">Run attack <kbd>R</kbd></button>
+  <div class="row tight" style="margin-top:6px">
+    <button id="runDamage">Demo 1 · what it steals</button>
+  </div>
+  <div class="row tight" style="margin-top:6px">
+    <button id="runPii">Demo 5 · PII question</button>
+    <button id="runBenign">Benign question</button>
+  </div>
+  <div class="row tight" style="margin-top:6px">
+    <button id="runScan">Demo 3 · supply chain</button>
+    <button id="reset">Reset <kbd>0</kbd></button>
+  </div>
+</div>
+
+<div id="right">
+  <div id="verdict"><div class="head dim">Ready</div>
+    <div class="why">All controls off. Pick a payload and run it.</div></div>
+
+  <h2>Running tally <span class="dim">— block rate and false-positive rate, always together</span></h2>
+  <div class="card" id="tally"></div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card"><h3>Controls, this run</h3><div id="events"></div></div>
+    <div class="card"><h3>Tool calls, this run</h3><div id="tools"></div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card"><h3>Session 5 quality metrics, same run</h3><div id="scores"></div></div>
+    <div class="card"><h3>Tools the model was offered</h3><div id="offered"></div></div>
+  </div>
+
+  <h2>Assembled prompt <span class="dim">— what actually went to the model</span></h2>
+  <div class="card"><pre id="prompt" class="dim">Run an attack to see it.</pre></div>
+
+  <h2>Answer <span class="dim">— and the instruction the model followed</span></h2>
+  <div class="card"><pre id="answer" class="dim">—</pre></div>
+
+  <div id="scanCard" class="hidden">
+    <h2>Demo 3 · supply chain</h2>
+    <div class="card"><div id="scan"></div></div>
+  </div>
+
+  <h2>Residency &amp; sovereignty <span class="dim">— all three transfers</span></h2>
+  <div class="card"><div id="residency"></div></div>
+
+  <h2>July 2026, read as a control autopsy <span class="dim">— slide 11</span></h2>
+  <div class="grid2">
+    <div class="card"><h3 style="color:var(--red)">What failed</h3><div id="incFailed"></div></div>
+    <div class="card"><h3 style="color:var(--green)">What held</h3><div id="incHeld"></div></div>
+  </div>
+  <div class="card" style="margin-top:10px"><div id="incNote"></div></div>
+
+  <h2>Sandbox <span class="dim">— slide 10, right-hand column</span></h2>
+  <div class="card"><div id="sandbox"></div></div>
+</div>
+</main>
+
+<script>
+"use strict";
+let S = null;          // last /api/state
+let LAST = null;       // last run record
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined
+    ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if (data.error) { alert(data.error); throw new Error(data.error); }
+  return data;
+}
+
+/* ---------- render ---------- */
+function renderState(s) {
+  S = s;
+  $("hIndex").textContent = s.index.index_version || "(none)";
+  $("hModel").textContent = s.model;
+  $("hPoison").innerHTML = s.index.poisoned
+    ? '<span class="poisoned">POISONED INDEX</span>' : '<span>clean index</span>';
+
+  // Rule of Two. The largest thing after Run, because it is the takeaway an
+  // audience can apply on Monday with no budget.
+  const t = s.trifecta;
+  const box = $("trifecta");
+  box.className = t.lamp;
+  const lamp = (on, label, sub) => `<div class="lamp ${on ? "on" : ""}">
+      <b>${on ? "YES" : "no"}</b>${esc(label)}<div class="dim" style="font-size:10px">${esc(sub)}</div></div>`;
+  box.innerHTML = `
+    <div class="lamps">
+      ${lamp(t.private_data, "Private data", (t.private_via || []).join(", ") || "no read tools")}
+      ${lamp(t.untrusted_content, "Untrusted content", t.untrusted_via || "")}
+      ${lamp(t.outward_communication, "Acts outward", (t.outward_via || []).join(", ") || "no outward tools")}
+    </div>
+    <div class="verdict">${t.count}/3 — ${esc(t.verdict)}</div>
+    <div class="why">Lethal trifecta: Simon Willison. Rule of Two: Meta — at most two,
+      or require human approval. Computed from configuration, not measured.</div>`;
+
+  // Presets.
+  $("presets").innerHTML = s.presets.map((p, i) =>
+    `<button data-preset="${esc(p.key)}" class="${s.preset === p.key ? "active" : ""}">
+       ${esc(p.label)} <kbd>${i + 1}</kbd></button>`).join("");
+
+  // Controls, grouped by layer, deterministic ones marked.
+  $("controls").innerHTML = s.specs.map((spec) => {
+    const on = !!s.controls[spec.key];
+    return `<label class="ctl ${on ? "on" : ""} ${spec.deterministic ? "det" : ""}"
+              data-key="${esc(spec.key)}">
+      <input type="checkbox" ${on ? "checked" : ""}>
+      <div><div class="name">${esc(spec.label)}
+        <span class="tag">${esc(spec.layer_label)}</span>
+        <span class="tag ${spec.deterministic ? "det" : ""}">${
+          spec.deterministic ? "deterministic" : "probabilistic"}</span></div>
+        <div class="note">${esc(spec.notes)}</div></div></label>`;
+  }).join("");
+
+  $("persona").innerHTML = s.personas.map((p) =>
+    `<option value="${esc(p.key)}" ${p.key === s.persona ? "selected" : ""}>
+       ${esc(p.label)} — ${esc(p.subject)} [${esc((p.roles || []).join(", "))}]</option>`).join("");
+  $("region").innerHTML = s.regions.map((r) => {
+    const ok = s.permitted_regions.includes(r);
+    return `<option value="${esc(r)}" ${r === s.region ? "selected" : ""}>
+      ${esc(r)}${ok ? "" : "  — NOT PERMITTED (demo 5 ends here)"}</option>`;
+  }).join("");
+  $("scanMode").value = s.scan_mode;
+
+  if (!$("payload").options.length) {
+    $("payload").innerHTML = s.payloads.map((p) =>
+      `<option value="${esc(p.id)}" ${p.documented_gap ? "disabled" : ""}>
+        ${esc(p.id)} · ${esc(p.label)}${p.documented_gap ? "  (documented gap — not run)" : ""}</option>`
+    ).join("");
+  }
+  renderPayloadNote();
+  renderTally(s.tally);
+  renderResidency(s.residency);
+  renderIncident(s.incident);
+  renderSandbox(s);
+  if (!LAST) renderOffered(s.tools_offered, s.tools_unscoped);
+}
+
+function renderPayloadNote() {
+  const p = (S.payloads || []).find((x) => x.id === $("payload").value);
+  if (!p) { $("payloadNote").textContent = ""; return; }
+  $("payloadNote").innerHTML =
+    `<b>${esc(p.owasp)}${p.asi ? " + " + esc(p.asi) : ""}</b> · ${esc(p.vector)} · goal ${esc(p.goal)}<br>
+     ${esc(p.note)}<br>
+     <span style="color:var(--green)">stops:</span> ${esc((p.expect_blocked_by || []).join(", ") || "—")}
+     &nbsp;<span style="color:var(--red)">evades:</span> ${esc((p.expect_evades || []).join(", ") || "—")}
+     ${p.expect_bare_containment ? `<br><span class="dim">contained with nothing on: ${esc(p.expect_bare_containment)}</span>` : ""}`;
+}
+
+function renderTally(t) {
+  const pct = (v) => v === null || v === undefined ? "—" : (v * 100).toFixed(0) + "%";
+  const layers = Object.entries(t.by_layer || {});
+  $("tally").innerHTML = `
+    <div class="row" style="gap:28px; align-items:flex-end">
+      <div><div class="dim" style="font-size:11px">BLOCK RATE</div>
+        <div class="big" style="color:var(--green)">${pct(t.block_rate)}</div>
+        <div class="dim" style="font-size:11px">${t.contained}/${t.gradeable} that would have escaped</div></div>
+      <div><div class="dim" style="font-size:11px">FALSE-POSITIVE RATE</div>
+        <div class="big" style="color:var(--amber)">${pct(t.false_positive_rate)}</div>
+        <div class="dim" style="font-size:11px">${t.false_positives}/${t.benign} benign blocked</div></div>
+      <div style="flex:1">${layers.length ? `<table>
+        <tr><th>layer</th><th class="num">added ms</th><th class="num">added $</th></tr>
+        ${layers.map(([k, v]) => `<tr><td>${esc(k)}</td>
+          <td class="num">${v.latency_ms.toFixed(2)}</td>
+          <td class="num">${v.cost_usd.toFixed(8)}</td></tr>`).join("")}</table>`
+        : '<span class="dim">No per-layer cost yet — run an attack with a control on.</span>'}</div>
+    </div>
+    <div class="dim" style="font-size:11px; margin-top:8px">${esc(t.note)}</div>`;
+}
+
+function renderResidency(rows) {
+  $("residency").innerHTML = `<table>
+    <tr><th>transfer</th><th>region</th><th>permitted</th><th>provider jurisdiction</th></tr>
+    ${rows.map((r) => `<tr>
+      <td>${esc(r.transfer)}<div class="dim" style="font-size:11px">${esc(r.note)}</div></td>
+      <td class="mono">${esc(r.region)}</td>
+      <td><span class="pill ${r.permitted ? "pass" : "fail"}">${r.permitted ? "yes" : "REFUSE"}</span>
+        ${r.reason ? `<div class="dim" style="font-size:11px">${esc(r.reason)}</div>` : ""}</td>
+      <td class="mono">${esc(r.provider_jurisdiction)}</td></tr>`).join("")}</table>
+    <div class="dim" style="font-size:11.5px; margin-top:8px">
+      Residency is where the bytes sit. Sovereignty is who can compel disclosure — a question
+      about the provider's corporate home, not the datacentre's postcode. Teams remember
+      inference and forget the other two, because a trace does not feel like production data
+      even though it holds the user's question verbatim.</div>`;
+}
+
+function renderIncident(inc) {
+  const rows = (list) => `<ul class="tight">${list.map((r) =>
+    `<li><b>${esc(r.control)}</b><br><span class="dim">${esc(r.detail)}</span></li>`).join("")}</ul>`;
+  $("incFailed").innerHTML = rows(inc.failed) +
+    `<div class="dim" style="font-size:12px;margin-top:8px">All three are the same problem:
+       <b>one credential had too much power.</b></div>`;
+  $("incHeld").innerHTML = rows(inc.held) +
+    `<div class="dim" style="font-size:12px;margin-top:8px">All three are
+       <b>scope decisions made in advance</b>. Not one is a judgement about text.</div>`;
+  $("incNote").innerHTML = `<b>${esc(inc.summary)}</b>
+    <div class="dim" style="font-size:12px;margin-top:8px">${esc(inc.counterfactual)}</div>
+    <div class="dim" style="font-size:12px;margin-top:6px">~${inc.actions_reconstructed.toLocaleString()}
+      actions reconstructed from logs — a floor, not a total.</div>`;
+}
+
+function renderSandbox(s) {
+  $("sandbox").innerHTML = `<table>
+    <tr><th>limit</th><th>state here</th></tr>
+    ${s.sandbox_limits.map((r) => `<tr>
+      <td>${esc(r.limit)}<div class="dim" style="font-size:11px">${esc(r.note)}</div></td>
+      <td class="mono"><span class="pill ${/NOT|only/.test(r.state) ? "warn" : "pass"}">${esc(r.state)}</span></td>
+    </tr>`).join("")}</table>
+    <div class="row" style="margin-top:10px">
+      ${s.sandbox_fixtures.map((f) =>
+        `<button data-fixture="${esc(f.key)}">${esc(f.key.replace(/_/g, " "))}</button>`).join("")}
+    </div>
+    <div id="sandboxOut" class="dim" style="font-size:12px;margin-top:8px">
+      A container is not a security boundary against genuinely hostile code. The production
+      answer is a separate kernel or a microVM; this shows the shape of the control on a laptop.
+    </div>`;
+}
+
+function renderOffered(offered, unscoped) {
+  const shrunk = offered.length < unscoped.length;
+  $("offered").innerHTML = `
+    <div class="row" style="gap:20px">
+      <div><div class="dim" style="font-size:11px">BEFORE — no broker</div>
+        <div class="big" style="color:var(--red)">${unscoped.length}</div></div>
+      <div><div class="dim" style="font-size:11px">AFTER — this caller</div>
+        <div class="big" style="color:${shrunk ? "var(--green)" : "var(--red)"}">${offered.length}</div></div>
+    </div>
+    <pre style="margin-top:8px">${esc(offered.join("\n"))}</pre>
+    ${shrunk ? "" : `<div class="dim" style="font-size:11.5px;margin-top:6px">
+      Every function in the runtime surface, including <span class="hit">download_file_to_host</span>
+      — which nobody meant to expose. Turn the tool broker on.</div>`}`;
+}
+
+/* ---------- one run ---------- */
+function renderRun(r) {
+  LAST = r;
+  const v = $("verdict");
+  v.className = r.contained ? "contained" : "escaped";
+  const who = r.benign ? "BENIGN QUESTION" : `${r.payload_id} · ${r.owasp}${r.asi ? " + " + r.asi : ""}`;
+  v.innerHTML = `
+    <div class="head">${r.benign ? (r.blocked_by.length ? "FALSE POSITIVE" : "PASSED") : (r.contained ? "CONTAINED" : "ESCAPED")}</div>
+    <div class="why">${esc(r.verdict)}</div>
+    <div class="ids">${esc(who)} · persona ${esc(r.persona)} · ${
+      esc(Object.entries(r.controls).filter(([, on]) => on).map(([k]) => k).join(", ") || "no controls on")
+    } · ${r.e2e_ms.toFixed(0)}ms · $${(r.cost_total_usd || 0).toFixed(8)}</div>`;
+
+  $("events").innerHTML = r.events.length ? `<table>
+    <tr><th>control</th><th>hook</th><th>result</th><th class="num">ms</th><th class="num">$</th></tr>
+    ${r.events.map((e) => `<tr>
+      <td>${esc(e.key)} <span class="dim">L${e.layer}</span></td>
+      <td class="dim">${esc(e.hook)}</td>
+      <td><span class="pill ${e.passed ? (e.rewrote ? "warn" : "pass") : "fail"}">${
+        e.passed ? (e.rewrote ? "rewrote" : "pass") : "BLOCKED"}</span>
+        <div class="dim" style="font-size:11px">${esc(e.reason)}</div>
+        ${e.matched ? `<div class="hit mono" style="font-size:11px">${esc(e.matched.slice(0, 160))}</div>` : ""}</td>
+      <td class="num">${e.latency_ms.toFixed(2)}</td>
+      <td class="num">${e.cost_usd.toFixed(8)}</td></tr>`).join("")}</table>`
+    : '<span class="dim">No control ran — every toggle was off.</span>';
+
+  $("tools").innerHTML = r.tools.length ? `<table>
+    <tr><th>tool</th><th>outcome</th></tr>
+    ${r.tools.map((t) => `<tr>
+      <td>${esc(t.name)}<div class="dim mono" style="font-size:11px">${
+        esc(Object.entries(t.params).map(([k, val]) => k + "=" + String(val).slice(0, 60)).join("  "))}</div></td>
+      <td><span class="pill ${esc(t.outcome)}">${esc(t.outcome.toUpperCase())}</span>
+        ${t.reason ? `<div class="dim" style="font-size:11px">${esc(t.reason)}</div>` : ""}</td>
+    </tr>`).join("")}</table>
+    <div class="dim" style="font-size:11.5px;margin-top:6px">A denied tool call is your best
+      injection detector: it is a request the system made that no user asked for.</div>`
+    : '<span class="dim">The model asked for no tool.</span>';
+
+  const sc = r.scores || {};
+  const cell = (label, val) => {
+    const n = typeof val === "number" ? val : null;
+    const colour = n === null ? "var(--dim)" : n >= 0.7 ? "var(--green)" : "var(--amber)";
+    return `<tr><td>${esc(label)}</td><td class="num" style="color:${colour}">${
+      n === null ? "—" : n.toFixed(2)}</td></tr>`;
+  };
+  $("scores").innerHTML = `<table>
+    ${cell("sufficiency", r.sufficiency)}
+    ${cell("groundedness", sc.groundedness)}
+    ${cell("citation coverage", sc.citation_coverage)}
+    ${cell("context relevance", sc.context_relevance)}
+    ${cell("answer relevance", sc.answer_relevance)}
+    <tr><td>refused</td><td class="num">${r.refused ? "yes" : "no"}</td></tr>
+    <tr><td>citations</td><td class="num">${r.citations.length}</td></tr>
+    <tr><td>audit record</td><td class="num">#${r.audit_sequence} ${
+      r.audit_verified ? '<span class="pill pass">chain ok</span>' : '<span class="pill fail">BROKEN</span>'}</td></tr>
+  </table>
+  <div class="dim" style="font-size:11.5px;margin-top:6px">${
+    r.contained ? "" : "Nothing failed. The system did exactly what we designed it to do — it is grounded in something the attacker wrote."}</div>
+  <pre style="font-size:11px;margin-top:6px">${esc(r.citations.join("\n"))}</pre>`;
+
+  renderOffered(r.tools_offered, S.tools_unscoped);
+
+  // The assembled prompt, with the fences and the PII tokens marked so the
+  // point is visible from the back of the room rather than described.
+  const prompt = (r.sent_system || "") + "\n\n----- USER -----\n" + (r.sent_user || "");
+  $("prompt").className = "";
+  $("prompt").innerHTML = esc(prompt)
+    .replace(/(&lt;\/?attacklab\.fence[^&]*&gt;)/g, '<span class="fence">$1</span>')
+    .replace(/(\[(?:NINO|EMAIL|PHONE|PAYROLL|NAME)_\d+\])/g, '<span class="tok">$1</span>')
+    || '<span class="dim">Nothing was sent — the request was refused before the model.</span>';
+
+  $("answer").className = "";
+  const directives = (r.directives || []).map((d) =>
+    `<span class="hit">followed (${esc(d.kind)}, from the ${esc(d.source)}): ${esc(d.sentence)}</span>`).join("\n\n");
+  $("answer").innerHTML = esc(r.answer || "—")
+    .replace(/(&lt;&lt;tool:[^&]*&gt;&gt;)/g, '<span class="hit">$1</span>')
+    .replace(/(\[(?:NINO|EMAIL|PHONE|PAYROLL|NAME)_\d+\])/g, '<span class="tok">$1</span>')
+    + (directives ? "\n\n" + directives : "");
+}
+
+/* ---------- actions ---------- */
+async function refresh() { renderState(await api("/api/state")); }
+async function run() {
+  $("verdict").innerHTML = '<div class="head dim">Running…</div>';
+  renderRun(await api("/api/attack", {payload_id: $("payload").value}));
+  await refresh();
+}
+async function ask(question) {
+  renderRun(await api("/api/ask", {question}));
+  await refresh();
+}
+async function scan() {
+  $("scanCard").className = "";
+  $("scan").innerHTML = '<span class="dim">Scanning…</span>';
+  const rep = await api("/api/supplychain", {});
+  const groups = {};
+  rep.findings.forEach((f) => { (groups[f.scanner] = groups[f.scanner] || []).push(f); });
+  $("scan").innerHTML = Object.entries(groups).map(([scanner, list]) =>
+    `<h3 style="margin-top:10px">${esc(scanner)}</h3><table>
+      ${list.map((f) => `<tr>
+        <td style="width:80px"><span class="pill ${esc(f.severity)}">${esc(f.severity.toUpperCase())}</span></td>
+        <td><b class="mono">${esc(f.subject)}</b><div>${esc(f.summary)}</div>
+          ${f.remedy ? `<div class="dim" style="font-size:11px">→ ${esc(f.remedy)}</div>` : ""}</td>
+        <td class="dim mono" style="width:90px">${esc(f.owasp)}</td></tr>`).join("")}
+    </table>`).join("") +
+    `<div style="margin-top:10px"><b>${rep.counts.fail} failure(s)</b>, ${rep.counts.warn} warning(s),
+      ${rep.counts.pass} pass(es) — exit ${rep.ok ? 0 : 1}. A hash tells you the corpus changed;
+      it does not tell you that what changed was hostile.</div>`;
+}
+
+document.addEventListener("click", async (ev) => {
+  const preset = ev.target.closest("[data-preset]");
+  if (preset) { renderState(await api("/api/preset", {name: preset.dataset.preset})); return; }
+  const ctl = ev.target.closest(".ctl");
+  if (ctl) {
+    ev.preventDefault();
+    renderState(await api("/api/toggle", {key: ctl.dataset.key, on: !S.controls[ctl.dataset.key]}));
+    return;
+  }
+  const fixture = ev.target.closest("[data-fixture]");
+  if (fixture) {
+    const out = await api("/api/sandbox", {fixture: fixture.dataset.fixture});
+    $("sandboxOut").innerHTML = `<b>${esc(out.key)}</b> — exit ${out.result.exit_code}
+      ${out.result.limit_hit ? `· limit hit: <span class="hit">${esc(out.result.limit_hit)}</span>` : ""}
+      <pre style="font-size:11px">${esc(out.result.stdout || out.result.stderr || "(no output)")}</pre>
+      <div>limits applied: <span class="mono">${esc((out.result.limits_applied || []).join(", ") || "none")}</span></div>
+      <div>limits the host refused: <span class="mono hit">${esc((out.result.limits_skipped || []).join(", ") || "none")}</span></div>
+      <div class="dim" style="margin-top:6px">${esc(out.lesson)}</div>
+      <div class="dim">expected: ${esc(out.expect)}</div>`;
+  }
+});
+
+$("run").onclick = run;
+$("reset").onclick = async () => { LAST = null; renderState(await api("/api/reset", {})); };
+$("runScan").onclick = scan;
+$("runDamage").onclick = async () => {
+  $("verdict").innerHTML = '<div class="head dim">Running…</div>';
+  renderRun(await api("/api/damage", {}));
+  await refresh();
+};
+$("runPii").onclick = () => ask(S.pii_question);
+$("runBenign").onclick = () => ask("Must my employer notify me in writing before changing my shift?");
+$("payload").onchange = renderPayloadNote;
+$("persona").onchange = async (e) => renderState(await api("/api/persona", {name: e.target.value}));
+$("region").onchange = async (e) => renderState(await api("/api/region", {region: e.target.value}));
+$("scanMode").onchange = async (e) => renderState(await api("/api/scan-mode", {mode: e.target.value}));
+
+// Keyboard, because the presenter is talking rather than aiming a mouse.
+document.addEventListener("keydown", async (ev) => {
+  if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT") return;
+  const keys = {"1": "all_off", "2": "layers_1_3", "3": "least_privilege", "4": "all_on"};
+  if (keys[ev.key]) { renderState(await api("/api/preset", {name: keys[ev.key]})); return; }
+  if (ev.key === "r" || ev.key === "R") { run(); return; }
+  if (ev.key === "0") { LAST = null; renderState(await api("/api/reset", {})); }
+});
+
+refresh();
+</script>
+</body>
+</html>

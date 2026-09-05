@@ -14,6 +14,10 @@ WAIT_FOR_INDEX="${RIGHTS_WAIT_FOR_INDEX:-0}"
 needs_index() {
     case "$1" in
         demo|ask|compare|evals|evaluate|goldens) return 0 ;;
+        # `console` builds nothing and waits for nothing: it points at the
+        # attack lab's own twins, which `ingest --with-poison` produces in
+        # separate directories. Waiting for the assistant's manifest would hang
+        # the console behind an index it never reads.
         *) return 1 ;;
     esac
 }
@@ -50,6 +54,42 @@ if needs_index "$COMMAND"; then
 fi
 
 case "$COMMAND" in
+    # The session 6 setup line from the speaker notes:
+    #
+    #     docker compose run --rm ingest -- --with-poison
+    #
+    # Builds **both** twins, because the demo compares them and a rebuild
+    # between demo 1 and demo 2 is dead air. Same parser, same embedder, same
+    # manifest writer for each -- the poison is ingested through the unmodified
+    # pipeline or the demonstration is a lie.
+    ingest)
+        for arg in "$@"; do
+            if [ "$arg" = "--with-poison" ]; then
+                echo "building the poisoned twin and its clean counterpart" >&2
+                python -m attacklab.attacks.corpus --with-poison
+                python -m attacklab.attacks.corpus
+                exec python -m rights_agent ingest
+            fi
+        done
+        exec python -m rights_agent ingest "$@"
+        ;;
+    console)
+        exec python -m attacklab.console "$@"
+        ;;
+    scan)
+        # The model twins and the lockfile are generated, never committed, and
+        # excluded from the build context -- so build them here. Without this the
+        # scan reports "no model directory" and demo 3 loses two of its beats.
+        python -m attacklab.supplychain.make_fixtures >&2
+        exec python -m attacklab.supplychain --all "$@"
+        ;;
+    attack)
+        exec python -m attacklab.report --all "$@"
+        ;;
+    adversarial)
+        exec python -m pytest evals/test_controls.py evals/test_falsepos.py \
+            evals/test_supplychain.py "$@"
+        ;;
     evals)
         exec python -m pytest evals/ "$@"
         ;;

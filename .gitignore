@@ -233,3 +233,30 @@ uitest/part*.json
 ._*
 .Spotlight-V100
 .Trashes
+
+# Session 6 artefacts.
+#
+# The two index twins are rebuilt by `make poison` and `make clean-index`, the
+# same way runs/ is rebuilt by the embedding pipeline.
+runs-clean/
+runs-poisoned/
+
+# The demo-3 model fixtures are GENERATED, and deliberately not committed:
+# tiny.pt carries a live pickle REDUCE, and a binary with a reduce in it is
+# exactly what a repository scanner should complain about. Having one appear in
+# a checkout is how a lab loses its welcome on a corporate laptop. Build them
+# with `make fixtures`; the payload is a dozen readable lines in
+# attacklab/supplychain/make_fixtures.py, which is a stronger safety claim than
+# a hash in a README.
+fixtures/models/
+fixtures/lock/models.lock.json
+
+# Working notes and the deck itself.
+prep/
+presentation/
+
+# The demo runbook is committed as Markdown, which renders on GitHub and needs
+# nothing to read it. The HTML twin is generated from it by a script that lives
+# in presentation/build/ -- ignored above -- so committing the output would leave
+# a derived file in the tree with no way to regenerate it.
+demo/*.html

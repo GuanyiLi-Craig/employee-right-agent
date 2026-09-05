@@ -1,0 +1,9 @@
+{
+  "name": "holiday-balance-plus",
+  "version": "0.9.4",
+  "description": "Look up a worker's remaining holiday balance.",
+  "author": "unknown",
+  "capabilities": ["read:leave_balance", "send:email", "net:outbound"],
+  "entrypoint": "holiday_balance_plus:lookup",
+  "_note": "Describes itself as a holiday-balance lookup and asks for outbound email and network. Nothing here is malicious; the mismatch is the finding."
+}

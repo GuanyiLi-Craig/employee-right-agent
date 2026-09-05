@@ -176,10 +176,11 @@ not be supported by the source.
 ## 3. The test suites
 
 ```bash
-uv run pytest -q                              # 475 tests, ~21s
-uv run pytest tests/ -q                       # 395 unit tests, no index needed
-uv run pytest evals/test_deterministic.py -q  # 55 tests: the merge gate
+uv run pytest -q                              # 741 tests, ~90s
+uv run pytest tests/ -q                       # 556 unit tests, no index needed
+uv run pytest evals/test_deterministic.py -q  # 77 tests: the merge gate
 uv run pytest evals/test_quality.py -q        # 11 tests: aggregate thresholds
+uv run pytest evals/test_controls.py -q       # 54 tests: the session 6 containment gate
 ```
 
 | Suite | Asserts | Needs an index |
@@ -187,9 +188,16 @@ uv run pytest evals/test_quality.py -q        # 11 tests: aggregate thresholds
 | `tests/` | every module in isolation: parser traps, citations, embedder determinism, sufficiency arithmetic, context assembly, latency accounting, kappa, PSI and its epsilon, the cost components, the audit chain, follow-up resolution, both history tiers | no |
 | `evals/test_deterministic.py` | **structural only** — manifest completeness, tree shape, embedder pinning, id uniqueness, refusals, expected citations, required metrics fields, `e2e ≥ Σ stages`, **audit-chain integrity**, chat streaming, chat history across both tiers, the dashboard's panels | yes |
 | `evals/test_quality.py` | aggregates — mean **and p10** groundedness and citation coverage, context and answer relevance, and the judge's kappa **first** | yes |
+| `evals/test_controls.py` | the session 6 containment gate: every runnable payload against the control stack, and `expect_evades` rows that **fail the build if a control starts blocking them** — see §10 | yes |
+| `evals/test_falsepos.py` | 25 benign questions that read like attacks. A control that blocks them has not got safer, it has got useless | yes |
+| `evals/test_supplychain.py` | the five pre-deploy scanners find the planted flaws in the fixtures | no |
 
 Nothing in `test_deterministic.py` asks a model for an opinion. That is exactly
 why it is allowed to fail a build.
+
+The attack-lab unit tests (`tests/test_attacklab_*.py`, `tests/test_hooks.py`,
+122 of the 556) need no index either: they exercise the registry, the controls,
+the tool broker, the sandbox limits and the catalogue's own invariants.
 
 ### 3.1 The numbers, without the assertions
 
@@ -926,3 +934,85 @@ open http://localhost:6016          # traces, on a second tab
 
 `Reset` between rehearsals: it clears the metrics, restarts the audit chain from
 genesis and drops the transcripts.
+
+---
+
+## 10. The session 6 attack lab
+
+Session 5 asks whether the agent is *good*. Session 6 asks what happens when
+someone attacks it — and, more usefully, which of your controls turn out not to
+be controls at all.
+
+```bash
+make session6         # build the model fixtures and both index twins (~25s, once)
+make session6-check   # prove all five demos land, headless: 30 beats
+make stack            # assistant + console + phoenix, one command
+make adversarial      # the CI gate: containment, false positives, supply chain
+```
+
+`make stack` takes port overrides when the defaults are busy — this is the usual
+case on a laptop that already runs something on 8000:
+
+```bash
+make stack DEMO_PORT=8100 CONSOLE_PORT=8180 PHOENIX_PORT=6106 PHOENIX_OTLP=4417
+make stack-down
+```
+
+The step-by-step operating instructions for each demo — what it is for, what to
+press, what you should see, and what to do when it misbehaves — are in
+[`demo/session6-demo-operations.md`](demo/session6-demo-operations.md).
+
+### 10.1 What the lab is made of
+
+| | |
+|---|---|
+| 7 hooks | `on_question`, `on_context`, `on_prompt`, `on_answer`, `on_tool_call`, `on_log`, `resolve_model`. `NullHooks` no-ops, so the assistant is unchanged until the lab attaches. |
+| 8 controls | 6 run per request, of which **2 are deterministic** (`tool_broker`, `residency`). `supplychain` is pre-deploy; `rule_of_two` is design-time. |
+| 22 payloads | 20 runnable, 2 documented gaps. Indirect ones are spliced into the poisoned corpus at distinct provisions and reach the model through the **unmodified** retrieval pipeline. |
+| 2 index twins | `runs-poisoned` and `runs-clean`. Swapping between them is a pointer change, so the console can prove the poison is in the data and not in the prompt. |
+
+### 10.2 The assertion that matters
+
+`evals/adversarial.jsonl` carries 140 rows. Most assert that a control blocks
+what it claims to block. The interesting ones do the opposite:
+
+- `expect_blocked_by` — this control must stop this payload.
+- **`expect_evades`** — this payload must get through. If a control starts
+  blocking it, **the build fails.**
+
+That second one is the point of the whole exercise. A lab that only records
+successes tells you nothing about the day the attacker rephrases politely, so
+the evasions are pinned as tests. When one of them starts passing, somebody has
+either genuinely improved a control or quietly broken the honesty of the demo —
+and either way you want to be told.
+
+```bash
+uv run pytest evals/test_controls.py evals/test_falsepos.py evals/test_supplychain.py -q
+```
+
+### 10.3 The supply-chain scanners
+
+Five of them, run before deploy rather than per request:
+
+```bash
+make scan     # exits 1 — the fixtures are planted to fail, that is the demo
+```
+
+| Scanner | Finds |
+|---|---|
+| `scan_model` | a pickle that executes on load, and `torch.load(..., weights_only=False)` in your own source |
+| `scan_index` | poisoned text in the vector store, **by content** — not by filename |
+| `scan_skills` | instructions hidden in skill and agent definitions |
+| `scan_lock` | a lockfile that does not pin what is actually on disk |
+| `scan_tool_surface` | a tool exposed to the model and absent from the reviewed allowlist |
+
+The last one is worth its own beat: `download_file_to_host` is model-callable
+because a decorator landed on the wrong function. No exploit required.
+
+### 10.4 What it deliberately does not do
+
+The lab measures a **33% block rate** (5 of 15 attempts) with every heuristic
+layer on. That is not a failure of the implementation — it is the honest number,
+and the reason the deck's argument is architectural rather than filter-shaped.
+The two deterministic controls are the ones that hold. See
+[README](README.md#the-attack-lab-session-6) for the full accounting.

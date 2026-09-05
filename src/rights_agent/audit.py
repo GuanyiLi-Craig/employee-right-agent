@@ -51,6 +51,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
+from rights_agent import hooks
 from rights_agent.log import get_logger
 
 log = get_logger("audit")
@@ -60,7 +61,13 @@ log = get_logger("audit")
 #: hash is missing".
 GENESIS_HASH = "0" * 64
 
-AUDIT_SCHEMA = 1
+#: Bumped to 2 when ``controls`` was added.
+#:
+#: Schema-1 rows still verify, and that is a property of :meth:`AuditRecord.payload`
+#: rather than luck: an empty ``controls`` mapping is omitted from the hashed
+#: payload, so a record written before the field existed hashes to exactly what
+#: it hashed to then.  ``tests/test_audit.py`` asserts it against a stored row.
+AUDIT_SCHEMA = 2
 
 #: The AI Act Articles 19/26(6) floor, in days.  A floor, not a policy: the
 #: deployed period must be justified against the purpose and against sector law.
@@ -170,10 +177,31 @@ class AuditRecord:
     trace_id: str = ""
     trace_span_id: str = ""
 
+    # -- controls ------------------------------------------------------------
+    #: Which security controls were in force, and what they decided.
+    #:
+    #: Populated by whatever is installed at :data:`rights_agent.hooks.HOOKS`;
+    #: empty when nothing is.  It answers the question you cannot answer
+    #: afterwards from anything else: a record saying an answer was returned,
+    #: without saying which controls were on, describes a system nobody can
+    #: reconstruct.  Denied tool calls land here too -- a denial is a request
+    #: the system made that no user asked for, which makes it the most
+    #: interesting line in the log.
+    controls: dict[str, Any] = field(default_factory=dict)
+
     def payload(self) -> dict[str, Any]:
-        """Everything the hash covers: the record minus its own hash."""
+        """Everything the hash covers: the record minus its own hash.
+
+        An empty ``controls`` mapping is omitted rather than hashed as ``{}``.
+        Canonicalisation, not an exemption: absent and empty mean the same
+        thing, so they must hash the same, and that is what lets a record
+        written under schema 1 still verify.  Editing a *populated* mapping
+        still breaks the hash, which is the property that matters.
+        """
         data = asdict(self)
         data.pop("record_hash", None)
+        if not data.get("controls"):
+            data.pop("controls", None)
         return data
 
     def compute_hash(self) -> str:
@@ -365,7 +393,27 @@ class AuditLog:
 
     # ---- appending --------------------------------------------------------
     def append(self, **fields: Any) -> AuditRecord:
-        """Seal and append one record.  Returns the sealed record."""
+        """Seal and append one record.  Returns the sealed record.
+
+        Hook 6 of 7 fires here, on the fields and **before** the hash is
+        computed.  Before, because a record that is redacted after sealing is a
+        record whose hash no longer covers its contents; and here rather than at
+        the call site because there is exactly one writer, which is what makes
+        the hook unreachable by the model.  Nothing the model emits reaches this
+        function: it is called by the agent with fields the agent assembled.
+        That is the whole defence against the audit-suppression payload class --
+        not a filter, an absence of a path.
+        """
+        fields = dict(hooks.HOOKS.on_log(dict(fields)))
+        unknown = sorted(set(fields) - _FIELDS)
+        if unknown:
+            # A hook that invents a field would otherwise fail here as an
+            # opaque TypeError from the dataclass, one frame away from the
+            # cause. Named explicitly because the fix is in the hook.
+            raise AuditError(
+                f"a hook added fields the audit record has no place for: {unknown}. "
+                "on_log may redact and annotate; it may not extend the schema."
+            )
         with self._lock:
             if self._head_hash is None or self._count is None:
                 self._load_head()

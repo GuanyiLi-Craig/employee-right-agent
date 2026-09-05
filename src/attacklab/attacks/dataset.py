@@ -20,9 +20,13 @@ import json
 from pathlib import Path
 
 from attacklab.attacks.catalogue import RUNNABLE, Payload
+from attacklab.paths import evals_dir
 from attacklab.registry import RUNTIME_KEYS
 
-DATASET_PATH = Path(__file__).resolve().parents[3] / "evals" / "adversarial.jsonl"
+
+def _dataset_path() -> Path:
+    """Resolved on use, not at import: see :mod:`attacklab.paths`."""
+    return evals_dir() / "adversarial.jsonl"
 
 
 def rows(payloads: tuple[Payload, ...] = RUNNABLE) -> list[dict[str, object]]:
@@ -72,7 +76,7 @@ def rows(payloads: tuple[Payload, ...] = RUNNABLE) -> list[dict[str, object]]:
 
 
 def write(path: Path | None = None) -> Path:
-    path = path or DATASET_PATH
+    path = path or _dataset_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     body = "\n".join(json.dumps(row, sort_keys=True) for row in rows())
     path.write_text(body + "\n", encoding="utf-8")
@@ -89,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     generated = "\n".join(json.dumps(row, sort_keys=True) for row in rows()) + "\n"
-    target = args.out or DATASET_PATH
+    target = args.out or _dataset_path()
     if args.check:
         current = target.read_text(encoding="utf-8") if target.exists() else ""
         if current != generated:

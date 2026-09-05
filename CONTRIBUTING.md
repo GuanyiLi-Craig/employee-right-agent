@@ -32,13 +32,22 @@ eval gate, which is pointed at the real Act.
 ## Before you open a pull request
 
 ```bash
-make lint     # ruff, and it must be clean
-make test     # unit tests and both eval suites
+make lint         # ruff, and it must be clean
+make test         # unit tests and every eval suite
 ```
 
-CI runs the same things plus a Docker build, so a green local run is a good
-predictor. The unit tests need no index and no network; the eval suites need an
-index.
+If you touched the attack lab, its gate needs fixtures and the poisoned index
+twin, which `make test` does not build for you:
+
+```bash
+make session6     # fixtures + both index twins, once
+make adversarial  # containment, false positives, supply chain
+```
+
+CI runs the same things in two workflows — `eval.yml` (lint, unit, quality gate,
+Docker build) and `adversarial-gate.yml` (the session 6 gate plus a headless
+rehearsal of all five demos) — so a green local run is a good predictor. The
+unit tests need no index and no network; the eval suites need an index.
 
 ## The rules that are not negotiable
 
@@ -58,6 +67,15 @@ contains structural assertions only, which is exactly why it is allowed to fail
 a build. Aggregate and distributional claims go in `test_quality.py`, because
 model output is a distribution and asserting that every answer clears a bar
 produces a flaky suite that gets deleted.
+
+**Never make an `expect_evades` row pass by tightening a control.** Rows in
+`evals/adversarial.jsonl` marked `expect_evades` assert that a payload *gets
+through*, and the build fails when one starts being blocked. That looks
+backwards and is the most important assertion in the lab: the demo's entire
+argument is that heuristic layers catch the obvious and miss the polite
+rephrase, so an evasion that quietly disappears has either been genuinely fixed
+— in which case say so in the commit and move the row — or the demo has been
+made dishonest. Never the second by accident.
 
 **Changing the corpus or the embedder invalidates the datasets.** An expected
 citation names a provision, and a provision exists in one document. The gate
@@ -97,3 +115,11 @@ wrong.
 ## Security
 
 Do not open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).
+
+The attack lab is a teaching artefact, not an offensive toolkit, and three rules
+hold for anything added to it: no payload does real damage, no real malware, and
+every attack runs through the assistant's ordinary code path rather than a
+forked copy. The reasoning is in the [README](README.md#the-attack-lab-session-6).
+Payloads that reach the network, touch anything outside the scratch directory,
+or use a live mailbox or domain will not be merged — the reserved example
+domains exist for this.

@@ -10,16 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from attacklab.attacks.corpus import clean_runs_dir, poison_runs_dir
+from attacklab.paths import fixtures_dir, project_root
 from attacklab.supplychain import scan_index, scan_lock, scan_model, scan_skills, scan_tool_surface
 from attacklab.supplychain.findings import ScanReport
 from rights_agent.config import Settings
 from rights_agent.config import settings as load_settings
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-FIXTURES = REPO_ROOT / "fixtures"
 
 
 def run_all(settings: Settings | None = None) -> ScanReport:
@@ -28,7 +25,8 @@ def run_all(settings: Settings | None = None) -> ScanReport:
     report = ScanReport()
 
     # 1. Same model, different container.
-    report.extend(scan_model.scan(FIXTURES / "models", REPO_ROOT / "src"))
+    fixtures = fixtures_dir()
+    report.extend(scan_model.scan(fixtures / "models", project_root() / "src"))
 
     # 2. The poisoned document, found by content. The manifest flag is never
     #    read -- see the module docstring and the test that enforces it.
@@ -47,10 +45,10 @@ def run_all(settings: Settings | None = None) -> ScanReport:
             )
 
     # 3. A manifest requesting a tool it cannot justify.
-    report.extend(scan_skills.scan(FIXTURES / "skills"))
+    report.extend(scan_skills.scan(fixtures / "skills"))
 
     # 4. A moved digest.
-    report.extend(scan_lock.scan(FIXTURES / "lock" / "models.lock.json", FIXTURES))
+    report.extend(scan_lock.scan(fixtures / "lock" / "models.lock.json", fixtures))
 
     # 5. The tool surface itself -- the check that comes before the others matter.
     report.extend(scan_tool_surface.scan())

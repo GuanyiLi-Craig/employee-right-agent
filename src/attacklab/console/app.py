@@ -400,6 +400,31 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self._send(status, body, "application/json; charset=utf-8")
 
+    def _reject_cross_origin(self) -> bool:
+        """True when a POST looks like it came from another site's page.
+
+        The console has no login and every POST changes lab state -- it can turn
+        a control off, run the catalogue, or execute a sandbox fixture. On
+        loopback that is fine until the presenter opens a hostile tab: a
+        `text/plain` fetch is a CORS-simple request, so it is sent without a
+        preflight and the side effect lands even though the reply is unreadable.
+        Requiring the JSON content type is what closes that, because a form and a
+        simple fetch cannot set it. `Sec-Fetch-Site` is the belt to that braces
+        and costs nothing on the browsers that send it.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "none"):
+            self._json({"error": f"cross-site request refused ({site})"}, HTTPStatus.FORBIDDEN)
+            return True
+        media_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if int(self.headers.get("Content-Length") or 0) > 0 and media_type != "application/json":
+            self._json(
+                {"error": "Content-Type must be application/json"},
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            )
+            return True
+        return False
+
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
@@ -435,6 +460,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if self._reject_cross_origin():
+            return
         try:
             body = self._read_json()
             if path == "/api/toggle":

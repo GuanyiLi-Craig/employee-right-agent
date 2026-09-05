@@ -28,8 +28,16 @@ import pickle
 import struct
 from pathlib import Path
 
-FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
-MODELS = FIXTURES / "models"
+from attacklab.paths import fixtures_dir
+
+
+def _models_dir() -> Path:
+    """Resolved on use rather than at import.
+
+    See :mod:`attacklab.paths` for why a ``__file__`` walk is wrong once the
+    package is installed.
+    """
+    return fixtures_dir() / "models"
 
 #: The scratch path the payload would touch, and the only one.
 MARKER_NAME = "attacklab-pickle-marker.txt"
@@ -156,7 +164,7 @@ def write_lockfile(models_dir: Path, lock_dir: Path | None = None) -> Path:
 
 def build(models_dir: Path | None = None) -> tuple[Path, Path, Path]:
     """Both model containers and the lockfile.  Returns their paths."""
-    models_dir = models_dir or MODELS
+    models_dir = models_dir or _models_dir()
     pickle_path = write_pickle_model(models_dir / "tiny.pt")
     safe_path = write_safetensors_model(models_dir / "tiny.safetensors")
     return pickle_path, safe_path, write_lockfile(models_dir)

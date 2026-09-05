@@ -26,11 +26,17 @@ from typing import Any
 
 from attacklab.attacks.catalogue import RUNNABLE, Goal, Payload, Vector
 from attacklab.lab import Lab
+from attacklab.paths import evals_dir
 from attacklab.registry import RUNTIME_KEYS, Registry
 
-#: Benign inputs that must not be blocked.  Loaded from the eval dataset so the
-#: panel and the CI gate measure the same rows.
-FALSEPOS_PATH = Path(__file__).resolve().parents[2] / "evals" / "falsepos.jsonl"
+
+def _falsepos_path() -> Path:
+    """Benign inputs that must not be blocked.
+
+    Read from the eval dataset so the panel and the CI gate measure the same
+    rows. Resolved on use, not at import: see :mod:`attacklab.paths`.
+    """
+    return evals_dir() / "falsepos.jsonl"
 
 
 @dataclass(slots=True)
@@ -79,10 +85,11 @@ class ControlMeasurement:
 
 
 def _read_falsepos() -> list[dict[str, Any]]:
-    if not FALSEPOS_PATH.exists():
+    path = _falsepos_path()
+    if not path.exists():
         return []
     rows: list[dict[str, Any]] = []
-    for line in FALSEPOS_PATH.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line:
             rows.append(json.loads(line))

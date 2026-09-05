@@ -527,10 +527,22 @@ the assistant gained **seven hook points** in
 `attacklab` supplies the implementations.
 
 ```bash
-make session6         # build the fixtures and both index twins
-make console          # http://127.0.0.1:8080
+make session6         # build the fixtures and both index twins (~25s, once)
 make session6-check   # prove all five demos land before the room fills
+make stack            # assistant :8000, console :8080, phoenix :6006
+make adversarial      # the CI gate: containment, false positives, supply chain
 ```
+
+`make stack` takes port overrides, which is the normal case on a laptop that is
+already using 8000:
+
+```bash
+make stack DEMO_PORT=8100 CONSOLE_PORT=8180 PHOENIX_PORT=6106 PHOENIX_OTLP=4417
+make stack-down
+```
+
+Step-by-step operating instructions for each demo are in
+[`demo/session6-demo-operations.md`](demo/session6-demo-operations.md).
 
 Three rules constrain everything in it:
 
@@ -575,7 +587,7 @@ and not one control ran. The correct form is `from rights_agent import hooks`
 then `hooks.HOOKS.on_question(...)`, and a test parses the source tree to keep it
 that way.
 
-### The seven controls
+### The eight controls
 
 | key | layer | deterministic | what it is honestly worth |
 |---|---|---|---|
@@ -819,7 +831,7 @@ Two more found while building this, both specific to chromadb 1.5.x:
 src/rights_agent/       the package: pipelines, retrieval, graph, telemetry, demo
 src/rights_agent/hooks.py   the seven hook points; no-ops by default (session 6)
 src/attacklab/          the attack lab: controls, payloads, scanners, console
-  controls/             the seven controls, plus the stack that presents them
+  controls/             the eight controls, plus the stack that presents them
   attacks/              the catalogue, the payload files, the poisoned corpus
   supplychain/          five pre-deployment scanners and one CLI
   sandbox/              the subprocess jail for the one tool that executes output
@@ -833,6 +845,7 @@ tests/                  unit tests; no index required
 docker/                 Dockerfile (runtime + dev targets) and the entrypoint
 docker-compose.yml      phoenix · dashboard · console · ingest jobs · tools
 security/               nuclei templates for this application's own risks
+demo/                   step-by-step operating instructions for the five demos
 uitest/                 browser tests that assert on what is on screen
 runs/                   generated: chroma index, manifests, metrics.jsonl,
                         audit.jsonl, audit_checkpoint.json (all git-ignored)

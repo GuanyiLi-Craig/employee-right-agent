@@ -190,3 +190,71 @@ def test_every_preset_names_only_real_controls() -> None:
     for name, wanted in PRESETS.items():
         unknown = sorted(set(wanted) - known)
         assert not unknown, f"preset {name!r} names controls that do not exist: {unknown}"
+
+
+class _FakeHeaders(dict):
+    """Just enough of ``email.message.Message`` for the handler's header reads."""
+
+    def get(self, name: str, default: object = None) -> object:  # type: ignore[override]
+        for key, value in self.items():
+            if key.lower() == name.lower():
+                return value
+        return default
+
+
+def _guard(**headers: str) -> tuple[bool, int | None]:
+    """Run ``_reject_cross_origin`` against a synthetic request.
+
+    The handler is instantiated without ``__init__`` because
+    ``BaseHTTPRequestHandler.__init__`` serves the whole request from a socket.
+    Only the two header reads and the error path are under test.
+    """
+    from attacklab.console.app import ConsoleHandler
+
+    handler = ConsoleHandler.__new__(ConsoleHandler)
+    handler.headers = _FakeHeaders(headers)  # type: ignore[assignment]
+    sent: list[int] = []
+    handler._json = lambda payload, status=None: sent.append(int(status))  # type: ignore[assignment,attr-defined]
+    return handler._reject_cross_origin(), (sent[0] if sent else None)
+
+
+def test_the_console_refuses_a_post_that_is_not_json() -> None:
+    """A cross-origin page cannot set ``application/json`` without a preflight.
+
+    Every console POST changes lab state -- it can turn a control off, run the
+    catalogue, or execute a sandbox fixture -- and there is no login. A
+    ``text/plain`` fetch is CORS-simple, so before this guard a hostile tab open
+    on the presenter's machine could land the side effect while the demo ran,
+    even though it could never read the reply. Requiring the content type is what
+    closes it, because neither a form nor a simple fetch can send that header.
+    """
+    for media_type in ("text/plain", "application/x-www-form-urlencoded", "multipart/form-data"):
+        rejected, status = _guard(**{"Content-Type": media_type, "Content-Length": "12"})
+        assert rejected, f"{media_type} must not be parsed as JSON"
+        assert status == 415
+
+
+def test_the_console_refuses_a_declared_cross_site_post() -> None:
+    """Belt to the content type's braces, on the browsers that send the header."""
+    rejected, status = _guard(
+        **{"Content-Type": "application/json", "Content-Length": "12", "Sec-Fetch-Site": "cross-site"}
+    )
+    assert rejected
+    assert status == 403
+
+
+def test_the_console_still_accepts_its_own_page() -> None:
+    """The guard is invisible to the console's own single fetch helper.
+
+    Two shapes have to keep working: the JSON body the page sends, and the
+    bodyless POSTs (``/api/reset``, ``/api/damage``) where there is no content
+    type to check.
+    """
+    for headers in (
+        {"Content-Type": "application/json", "Content-Length": "31", "Sec-Fetch-Site": "same-origin"},
+        {"Content-Length": "0"},
+        {},
+    ):
+        rejected, status = _guard(**headers)
+        assert not rejected, f"{headers} is what the console itself sends"
+        assert status is None

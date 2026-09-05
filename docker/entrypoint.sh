@@ -77,6 +77,10 @@ case "$COMMAND" in
         exec python -m attacklab.console "$@"
         ;;
     scan)
+        # The model twins and the lockfile are generated, never committed, and
+        # excluded from the build context -- so build them here. Without this the
+        # scan reports "no model directory" and demo 3 loses two of its beats.
+        python -m attacklab.supplychain.make_fixtures >&2
         exec python -m attacklab.supplychain --all "$@"
         ;;
     attack)

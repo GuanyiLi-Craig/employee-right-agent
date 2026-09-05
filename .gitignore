@@ -254,3 +254,9 @@ fixtures/lock/models.lock.json
 # Working notes and the deck itself.
 prep/
 presentation/
+
+# The demo runbook is committed as Markdown, which renders on GitHub and needs
+# nothing to read it. The HTML twin is generated from it by a script that lives
+# in presentation/build/ -- ignored above -- so committing the output would leave
+# a derived file in the tree with no way to regenerate it.
+demo/*.html

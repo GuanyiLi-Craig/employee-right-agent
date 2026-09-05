@@ -63,7 +63,8 @@ class ControlSpec:
         }
 
 
-#: The seven controls, in the order the console shows them.
+#: The eight controls, in the order the console shows them. Six of them run per request;
+#: `supplychain` is pre-deploy and `rule_of_two` is design-time.
 SPECS: tuple[ControlSpec, ...] = (
     ControlSpec(
         key="input_scan",

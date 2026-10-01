@@ -8,5 +8,5 @@
     "controls": "node demo2.mjs",
     "all": "node demo.mjs && node demo2.mjs"
   },
-  "devDependencies": { "playwright": "1.62.1" }
+  "devDependencies": { "playwright": "1.63.0" }
 }

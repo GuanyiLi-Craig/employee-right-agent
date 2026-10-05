@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "chromadb==1.5.9",
-    "langgraph==1.2.11",
+    "langgraph==1.2.12",
 ]
 
 [project.urls]
